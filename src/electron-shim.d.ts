@@ -22,8 +22,13 @@ declare module 'electron' {
     setSize(width: number, height: number): void;
     setIgnoreMouseEvents(ignore: boolean, options?: { forward?: boolean }): void;
     setAlwaysOnTop(flag: boolean, level?: string): void;
+    focus(): void;
+    getTitle(): string;
+    on(event: string, listener: (...args: unknown[]) => void): this;
+    once(event: string, listener: (...args: unknown[]) => void): this;
     webContents: WebContents;
     isDestroyed(): boolean;
+    static getAllWindows(): BrowserWindow[];
   }
 
   export interface BrowserWindowConstructorOptions {
@@ -178,6 +183,10 @@ declare module 'electron' {
     sender: WebContents;
   }
 
+  export interface IpcMainInvokeEvent {
+    sender: WebContents;
+  }
+
   export interface IpcRendererEvent {
     sender: WebContents;
   }
@@ -220,6 +229,9 @@ declare module 'electron' {
 declare namespace Electron {
   interface IpcMainEvent {
     reply(channel: string, ...args: unknown[]): void;
+    sender: import('electron').WebContents;
+  }
+  interface IpcMainInvokeEvent {
     sender: import('electron').WebContents;
   }
   interface IpcRendererEvent {

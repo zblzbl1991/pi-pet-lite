@@ -7,6 +7,7 @@
 import type {
   AgentToRendererMessage,
   RendererToAgentMessage,
+  LLMConfig,
 } from '../shared/types';
 
 export interface RendererElectronAPI {
@@ -18,8 +19,19 @@ export interface RendererElectronAPI {
   sendToAgent: (msg: RendererToAgentMessage) => void;
 }
 
+/**
+ * API exposed to the settings window via its own preload script.
+ */
+export interface SettingsElectronAPI {
+  loadConfig: () => Promise<LLMConfig>;
+  saveConfig: (config: LLMConfig) => Promise<{ success: boolean; error?: string }>;
+  testConnection: (config: LLMConfig) => Promise<{ success: boolean; error?: string }>;
+  closeWindow: () => void;
+}
+
 declare global {
   interface Window {
     electronAPI: RendererElectronAPI;
+    settingsAPI: SettingsElectronAPI;
   }
 }

@@ -7,9 +7,11 @@ import {
 } from 'electron';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { createPetWindow } from './windows';
+import { createPetWindow, createSettingsWindow, getSettingsHtmlPath } from './windows';
 import { createTray } from './tray';
 import { AGENT_MESSAGE_PORT } from '../shared/constants';
+import { readConfig, updateLLMConfig } from '../config/config-store';
+import type { LLMConfig } from '../shared/types';
 
 let petWindow: BrowserWindow | null = null;
 
@@ -40,6 +42,13 @@ function getPreloadPath(): string {
 }
 
 /**
+ * Resolve the path to the settings preload script (compiled output).
+ */
+function getSettingsPreloadPath(): string {
+  return path.join(__dirname, '..', 'preload', 'settings-preload.js');
+}
+
+/**
  * Resolve the path to the agent utility process entry.
  */
 function getAgentEntryPath(): string {
@@ -66,7 +75,10 @@ function bootstrap(): void {
     // Create system tray
     createTray(
       () => {
-        // Open settings - placeholder for PR5
+        // Open settings window
+        const settingsHtmlPath = getSettingsHtmlPath();
+        const settingsPreloadPath = getSettingsPreloadPath();
+        createSettingsWindow(settingsHtmlPath, settingsPreloadPath);
       },
       () => {
         // Show/hide pet
@@ -131,7 +143,90 @@ function bootstrap(): void {
     });
 
     ipcMain.on('open-settings', () => {
-      // TODO: PR5 - Open settings window
+      // Open settings window from renderer request
+      const settingsHtmlPath = getSettingsHtmlPath();
+      const settingsPreloadPath = getSettingsPreloadPath();
+      createSettingsWindow(settingsHtmlPath, settingsPreloadPath);
+    });
+
+    // ---- Settings window IPC handlers ----
+
+    ipcMain.handle('settings:load-config', () => {
+      const config = readConfig();
+      return config.llm;
+    });
+
+    ipcMain.handle(
+      'settings:save-config',
+      (_event: Electron.IpcMainInvokeEvent, llm: LLMConfig) => {
+        try {
+          updateLLMConfig(llm);
+          return { success: true };
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          return { success: false, error: errorMessage };
+        }
+      }
+    );
+
+    ipcMain.handle(
+      'settings:test-connection',
+      async (
+        _event: Electron.IpcMainInvokeEvent,
+        config: LLMConfig
+      ): Promise<{ success: boolean; error?: string }> => {
+        // Validate config fields before attempting a connection test
+        if (!config.apiKey || config.apiKey.trim().length === 0) {
+          return { success: false, error: 'API key is empty' };
+        }
+        if (!config.provider) {
+          return { success: false, error: 'No provider selected' };
+        }
+        if (!config.model) {
+          return { success: false, error: 'No model selected' };
+        }
+
+        // Attempt a real API call via pi-ai to verify the key works.
+        // pi-ai is ESM-only so we use dynamic import from this CJS context.
+        try {
+          const piAi = await import('@earendil-works/pi-ai');
+          const model = piAi.getModel(
+            config.provider as import('@earendil-works/pi-ai').KnownProvider,
+            config.model as Parameters<typeof piAi.getModel>[1]
+          );
+
+          // Use pi-ai's streamSimple to send a minimal request.
+          // The API key is passed via the options object.
+          const stream = piAi.streamSimple(
+            model,
+            { messages: [{ role: 'user' as const, content: 'Say "ok"', timestamp: Date.now() }] },
+            { apiKey: config.apiKey, maxTokens: 5 }
+          );
+
+          for await (const _chunk of stream) {
+            // Got at least one chunk -- connection is valid
+            return { success: true };
+          }
+
+          // Stream completed without chunks (unlikely but handle gracefully)
+          return { success: true };
+        } catch (apiErr: unknown) {
+          const apiMessage =
+            apiErr instanceof Error ? apiErr.message : String(apiErr);
+          return { success: false, error: apiMessage };
+        }
+      }
+    );
+
+    ipcMain.on('settings:close', () => {
+      // Find the settings window and close it
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        if (win.getTitle() === 'Clawd Settings') {
+          win.close();
+          break;
+        }
+      }
     });
 
     // Keep app alive when window is closed (lives in tray)
