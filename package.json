@@ -15,9 +15,11 @@
   "dependencies": {
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-agent-core": "^0.74.0",
+    "node-cron": "^3.0.3",
     "typebox": "^1.1.24"
   },
   "devDependencies": {
+    "@types/node-cron": "^3.0.11",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",

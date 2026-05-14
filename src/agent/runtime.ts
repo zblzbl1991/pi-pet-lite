@@ -3,8 +3,9 @@
  *
  * Wraps pi-agent-core's Agent class with:
  * - LLM model creation from config
- * - Tool registration (read_file as the MVP tool)
+ * - Tool registration via the centralized tool registry
  * - beforeToolCall hook for trust policy enforcement
+ * - Scheduled task restoration on startup
  * - Event subscription that forwards to a callback (for IPC to renderer)
  *
  * Uses dynamic import() to load ESM-only pi-agent-core from CommonJS context.
@@ -15,15 +16,13 @@
  * module's types.
  */
 
-import { Type } from 'typebox';
 import { AgentState, TrustLevel } from '../shared/types';
 import { TRUST_POLICY } from '../shared/constants';
 import { createModel } from './llm';
-import { executeReadFile } from './tools/file-system';
+import { getAllTools, restoreSchedules, setScheduleFireCallback } from './tools/registry';
 
 /** Type aliases for pi-agent-core types (resolved at runtime via dynamic import) */
 type PiAgentEvent = import('@earendil-works/pi-agent-core').AgentEvent;
-type PiAgentTool = import('@earendil-works/pi-agent-core').AgentTool;
 type PiAssistantMessage = import('@earendil-works/pi-ai').AssistantMessage;
 type PiToolResultMessage = import('@earendil-works/pi-ai').ToolResultMessage;
 type PiAssistantMessageEvent = import('@earendil-works/pi-ai').AssistantMessageEvent;
@@ -83,23 +82,6 @@ export interface AgentRuntime {
 }
 
 /**
- * Build the read_file tool definition compatible with pi-agent-core's AgentTool interface.
- */
-function buildReadFileTool(): PiAgentTool {
-  const tool: PiAgentTool = {
-    name: 'read_file',
-    label: 'Read File',
-    description:
-      'Read the contents of a file from disk. Provide the full file path. Returns the file content as text.',
-    parameters: Type.Object({
-      path: Type.String({ description: 'Absolute or relative path to the file to read' }),
-    }),
-    execute: executeReadFile as PiAgentTool['execute'],
-  };
-  return tool;
-}
-
-/**
  * Extract text content from an AssistantMessage's content array.
  */
 function getAssistantText(content: PiAssistantMessage['content']): string {
@@ -143,16 +125,16 @@ export async function createAgentRuntime(
   // Create the LLM model from config
   const { model, apiKey } = await createModel();
 
-  // Build tools
-  const readFileTool = buildReadFileTool();
+  // Build tools from the centralized registry
+  const tools = getAllTools();
 
   // Track the current confirmation handler
   let confirmationHandler = getConfirmation;
 
   // System prompt for Clawd
   const systemPrompt = `You are Clawd, a helpful desktop AI assistant in the form of a cat character.
-You help users complete tasks on their computer. You can read files, execute scripts,
-and perform various operations. Be concise, friendly, and helpful.
+You help users complete tasks on their computer. You can read and write files, list directories,
+search for files, execute shell commands, and manage scheduled tasks. Be concise, friendly, and helpful.
 
 When a user asks you to do something, use the available tools to accomplish the task.
 If you need clarification, ask the user. Always explain what you're doing.`;
@@ -167,7 +149,7 @@ If you need clarification, ask the user. Always explain what you're doing.`;
       systemPrompt,
       model,
       thinkingLevel: 'off' as PiThinkingLevel,
-      tools: [readFileTool],
+      tools,
       messages: [],
     },
     streamFn: ai.streamSimple,
@@ -347,6 +329,16 @@ If you need clarification, ask the user. Always explain what you're doing.`;
         break;
     }
   });
+
+  // Restore persisted scheduled tasks and wire up the fire callback
+  setScheduleFireCallback((promptText: string) => {
+    // Send the prompt to the agent as if the user typed it
+    agent.prompt(promptText).catch((err: unknown) => {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error(`Scheduled task prompt failed: ${errorMessage}`);
+    });
+  });
+  restoreSchedules();
 
   return {
     async prompt(text: string): Promise<void> {

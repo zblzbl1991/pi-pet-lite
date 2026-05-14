@@ -36,9 +36,18 @@ export const TRUST_POLICY: Record<string, TrustLevel> = {
   read_file: TrustLevel.AUTO,
   list_directory: TrustLevel.AUTO,
   write_file: TrustLevel.CONFIRM_ONCE,
+  create_directory: TrustLevel.AUTO,
+  delete_file: TrustLevel.CONFIRM_ONCE,
+  search_files: TrustLevel.AUTO,
   run_script: TrustLevel.CONFIRM_ONCE,
+  create_schedule: TrustLevel.CONFIRM_ONCE,
+  list_schedules: TrustLevel.AUTO,
+  delete_schedule: TrustLevel.CONFIRM_ONCE,
   browser_action: TrustLevel.CONFIRM_STEP,
 };
+
+/** Filename for persisting scheduled tasks */
+export const SCHEDULES_FILENAME = 'clawd-schedules.json';
 
 /** Config file name */
 export const CONFIG_FILENAME = 'clawd-config.json';

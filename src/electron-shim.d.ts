@@ -241,3 +241,36 @@ declare namespace NodeJS {
     resourcesPath: string;
   }
 }
+
+/**
+ * Type declarations for node-cron.
+ * Replaced by @types/node-cron when that package is installed.
+ */
+declare module 'node-cron' {
+  export interface ScheduledTask {
+    stop(): void;
+    start(): void;
+    destroy(): void;
+  }
+
+  export function validate(expression: string): boolean;
+  export function schedule(expression: string, func: () => void, options?: { scheduled?: boolean }): ScheduledTask;
+}
+
+/**
+ * Type declarations for the glob package.
+ * Provides the glob() function for file pattern matching.
+ */
+declare module 'glob' {
+  export interface GlobOptions {
+    nodir?: boolean;
+    absolute?: boolean;
+    signal?: AbortSignal;
+    cwd?: string;
+    dot?: boolean;
+    ignore?: string | string[];
+  }
+
+  export function glob(pattern: string, options?: GlobOptions): Promise<string[]>;
+  export function sync(pattern: string, options?: GlobOptions): string[];
+}
