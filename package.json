@@ -4,19 +4,23 @@
   "description": "Clawd Desktop Pet Agent - an AI-powered desktop pet that helps you complete tasks",
   "main": "dist/main/main.js",
   "scripts": {
-    "dev": "npm run build && electron .",
+    "dev": "node scripts/dev.js",
+    "dev:quick": "electron .",
     "build": "npm run build:node && npm run build:renderer",
     "build:node": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build --config vite.renderer.config.ts",
+    "clean": "node -e \"const fs=require('fs'); ['dist','release'].forEach(d=>{try{fs.rmSync(d,{recursive:true})}catch{}})\"",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.renderer.json",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.renderer.json"
+    "postinstall": "node scripts/generate-icon.js"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "node-cron": "^3.0.3",
+    "playwright": "^1.52.0",
     "typebox": "^1.1.24"
   },
   "devDependencies": {
@@ -35,26 +39,48 @@
   "build": {
     "appId": "com.clawd.desktop-pet",
     "productName": "Clawd",
+    "copyright": "Copyright (c) 2026 Clawd Contributors",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "assets"
     },
     "files": [
       "dist/**/*",
-      "clawd-gifs/**/*"
+      "assets/icon.ico",
+      "!dist/renderer/**/*.map",
+      "!dist/main/**/*.map",
+      "!dist/agent/**/*.map",
+      "!dist/preload/**/*.map",
+      "!dist/shared/**/*.map",
+      "!dist/config/**/*.map"
     ],
-    "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    },
     "extraResources": [
       {
         "from": "clawd-gifs",
-        "to": "clawd-gifs"
+        "to": "clawd-gifs",
+        "filter": ["**/*.gif"]
       }
-    ]
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "Clawd-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Clawd"
+    }
   }
 }
