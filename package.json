@@ -1,0 +1,53 @@
+{
+  "name": "pi-agent-tool",
+  "version": "0.1.0",
+  "description": "Clawd Desktop Pet Agent - an AI-powered desktop pet that helps you complete tasks",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "npm run build && electron .",
+    "build": "npm run build:node && npm run build:renderer",
+    "build:node": "tsc -p tsconfig.node.json",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.renderer.json"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "electron": "^35.2.0",
+    "electron-builder": "^26.0.12",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  },
+  "private": true,
+  "build": {
+    "appId": "com.clawd.desktop-pet",
+    "productName": "Clawd",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "clawd-gifs/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "extraResources": [
+      {
+        "from": "clawd-gifs",
+        "to": "clawd-gifs"
+      }
+    ]
+  }
+}

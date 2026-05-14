@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/05-14-clawd-desktop-pet-agent/prd.md", "reason": "Verify implementation matches all grill-me decisions: three-process arch, MessagePort IPC, hardcoded trust, Playwright CDP"}
+{"file": ".trellis/tasks/05-14-clawd-desktop-pet-agent/research/electron-desktop-pet.md", "reason": "Verify Electron window config uses correct transparent/frameless/alwaysOnTop options, disableHardwareAcceleration called, click-through pattern implemented"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code quality checks for renderer components"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality checks for agent runtime and tools"}

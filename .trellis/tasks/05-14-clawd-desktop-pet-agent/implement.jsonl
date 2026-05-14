@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/05-14-clawd-desktop-pet-agent/prd.md", "reason": "PRD with all grill-me decisions: three-process architecture, IPC topology, trust policy, tool list, PR breakdown"}
+{"file": ".trellis/tasks/05-14-clawd-desktop-pet-agent/research/electron-desktop-pet.md", "reason": "Electron transparent window config, click-through pattern, tray integration, GIF rendering, chat bubble CSS — needed for PR1"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend conventions for React + TypeScript renderer code"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for PetAnimator, ChatBubble, SettingsWindow"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript strict mode conventions for shared types and IPC channels"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling patterns for agent runtime and tool execution in Utility Process"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality bar for agent layer code"}
