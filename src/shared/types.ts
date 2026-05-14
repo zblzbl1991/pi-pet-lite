@@ -23,7 +23,8 @@ export type AgentState = (typeof AgentState)[keyof typeof AgentState];
 /** Chat message direction */
 export const MessageRole = {
   USER: 'user',
-  AGENT: 'agent',
+  ASSISTANT: 'assistant',
+  TOOL: 'tool',
 } as const;
 
 export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];
@@ -34,6 +35,10 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   timestamp: number;
+  /** For streaming: true while the message is still being generated */
+  streaming?: boolean;
+  /** For tool result messages: whether the tool execution was an error */
+  isError?: boolean;
 }
 
 /** Trust level for tool execution confirmation */
@@ -62,14 +67,18 @@ export interface AppConfig {
 export type RendererToAgentMessage =
   | { type: 'user-input'; text: string }
   | { type: 'ping' }
-  | { type: 'confirm-tool'; toolName: string; approved: boolean };
+  | { type: 'confirmation-response'; toolCallId: string; approved: boolean };
 
 /** Messages sent from agent to renderer via MessagePort */
 export type AgentToRendererMessage =
   | { type: 'state-change'; state: AgentState }
   | { type: 'chat-message'; message: ChatMessage }
+  | { type: 'chat-message-update'; id: string; delta: string }
+  | { type: 'chat-message-end'; id: string }
   | { type: 'pong' }
-  | { type: 'tool-confirmation-request'; toolName: string; description: string };
+  | { type: 'confirmation-request'; toolCallId: string; toolName: string; args: Record<string, unknown> }
+  | { type: 'tool-execution'; toolCallId: string; toolName: string; status: 'running' | 'done' | 'error'; result?: string }
+  | { type: 'error'; message: string };
 
 /** IPC channels between main process and renderer */
 export interface MainIPCChannels {

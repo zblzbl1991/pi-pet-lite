@@ -11,12 +11,36 @@ import {
 /** Default pet position as fractions of screen dimensions */
 const DEFAULT_POSITION = { xFraction: 0.45, yFraction: 0.65 };
 
+/** Interface for active tool confirmation requests */
+interface ConfirmationRequest {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+}
+
+/** Interface for tool execution status display */
+interface ToolStatus {
+  toolName: string;
+  status: 'running' | 'done' | 'error';
+}
+
 export const PetWindow: React.FC = () => {
   const [agentState, setAgentState] = useState<AgentState>(AgentState.IDLE);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isInputVisible, setIsInputVisible] = useState(false);
   const [petPosition, setPetPosition] = useState(DEFAULT_POSITION);
+
+  // Streaming state: track the ID of the message currently being streamed
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  // Ref to keep the latest streaming message content for display
+  const streamingContentRef = useRef<Map<string, string>>(new Map());
+
+  // Confirmation state
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
+
+  // Tool status display
+  const [toolStatus, setToolStatus] = useState<ToolStatus | null>(null);
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
@@ -34,15 +58,89 @@ export const PetWindow: React.FC = () => {
           case 'state-change':
             setAgentState(msg.state);
             break;
+
           case 'chat-message':
             setMessages((prev) => [...prev, msg.message]);
+            if (msg.message.streaming) {
+              setStreamingMessageId(msg.message.id);
+              streamingContentRef.current.set(msg.message.id, msg.message.content);
+            }
             break;
+
+          case 'chat-message-update': {
+            const { id, delta } = msg;
+            streamingContentRef.current.set(
+              id,
+              (streamingContentRef.current.get(id) ?? '') + delta
+            );
+            // Force a re-render by updating the messages array with the new content
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === id
+                  ? { ...m, content: streamingContentRef.current.get(id) ?? m.content }
+                  : m
+              )
+            );
+            break;
+          }
+
+          case 'chat-message-end': {
+            setStreamingMessageId((prevId) => (prevId === msg.id ? null : prevId));
+            // Mark message as no longer streaming
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === msg.id ? { ...m, streaming: false } : m
+              )
+            );
+            break;
+          }
+
           case 'pong':
             // Ping response
             break;
-          case 'tool-confirmation-request':
-            // TODO: PR2 - Handle tool confirmation requests
+
+          case 'confirmation-request':
+            setConfirmation({
+              toolCallId: msg.toolCallId,
+              toolName: msg.toolName,
+              args: msg.args,
+            });
             break;
+
+          case 'tool-execution':
+            setToolStatus({
+              toolName: msg.toolName,
+              status: msg.status,
+            });
+            // Clear tool status after completion
+            if (msg.status === 'done' || msg.status === 'error') {
+              setTimeout(() => {
+                setToolStatus((prev) =>
+                  prev && prev.toolName === msg.toolName ? null : prev
+                );
+              }, 2000);
+            }
+            break;
+
+          case 'error':
+            // Show error as a system message
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `error-${Date.now()}`,
+                role: MessageRole.ASSISTANT,
+                content: `[Error] ${msg.message}`,
+                timestamp: Date.now(),
+              },
+            ]);
+            break;
+
+          default: {
+            // Exhaustive check - ensures all AgentToRendererMessage types are handled
+            const _exhaustive: never = msg;
+            console.warn('Unhandled agent message:', (_exhaustive as Record<string, unknown>).type);
+            break;
+          }
         }
       }
     );
@@ -79,6 +177,20 @@ export const PetWindow: React.FC = () => {
     setIsInputVisible(false);
   }, [inputText]);
 
+  const handleConfirmResponse = useCallback(
+    (toolCallId: string, approved: boolean) => {
+      setConfirmation(null);
+      if (window.electronAPI?.sendToAgent) {
+        window.electronAPI.sendToAgent({
+          type: 'confirmation-response',
+          toolCallId,
+          approved,
+        });
+      }
+    },
+    []
+  );
+
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setInputText(e.target.value);
@@ -110,7 +222,6 @@ export const PetWindow: React.FC = () => {
   // Drag handlers
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      // Only start drag if clicking on the pet area (not chat bubble)
       isDraggingRef.current = false;
       setIsDragging(false);
       dragStartRef.current = { x: e.screenX, y: e.screenY };
@@ -137,7 +248,6 @@ export const PetWindow: React.FC = () => {
       };
 
       const handleMouseUp = () => {
-        // Use a short delay so isDragging is still true when click fires
         setTimeout(() => {
           isDraggingRef.current = false;
           setIsDragging(false);
@@ -161,7 +271,6 @@ export const PetWindow: React.FC = () => {
       const localX = e.clientX - rect.left;
       const localY = e.clientY - rect.top;
 
-      // Bounding-box hit test: cursor is within the pet container
       const isOverPet =
         localX >= 0 &&
         localX <= rect.width &&
@@ -177,10 +286,10 @@ export const PetWindow: React.FC = () => {
   const petX = petPosition.xFraction * window.innerWidth;
   const petY = petPosition.yFraction * window.innerHeight;
 
-  // Get the latest agent message for the chat bubble
+  // Get the latest assistant/tool message for the chat bubble
   const latestAgentMessage = [...messages]
     .reverse()
-    .find((m) => m.role === MessageRole.AGENT);
+    .find((m) => m.role === MessageRole.ASSISTANT || m.role === MessageRole.TOOL);
 
   return (
     <div
@@ -199,11 +308,17 @@ export const PetWindow: React.FC = () => {
       {/* Chat bubble above the pet */}
       <ChatBubble
         message={latestAgentMessage?.content ?? null}
+        streamingMessageId={
+          latestAgentMessage?.id === streamingMessageId ? streamingMessageId : null
+        }
         inputVisible={isInputVisible}
         inputValue={inputText}
+        confirmation={confirmation}
+        toolStatus={toolStatus}
         onInputChange={handleInputChange}
         onKeyDown={handleKeyDown}
         onSubmit={handleSendMessage}
+        onConfirmResponse={handleConfirmResponse}
       />
 
       {/* Pet animation */}

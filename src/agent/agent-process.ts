@@ -1,24 +1,164 @@
 /**
  * Agent Utility Process entry point.
  *
- * This is a PLACEHOLDER for PR1. It sets up the MessagePort listener
- * and responds to basic ping/echo messages.
- * Full agent runtime (pi-agent-core + pi-ai) integration comes in PR2.
+ * Runs the pi-agent-core + pi-ai agent runtime in a dedicated process.
+ * Communicates with the renderer via MessagePort for:
+ *   - Receiving user messages
+ *   - Forwarding agent events (state changes, chat messages, tool confirmations)
+ *   - Handling confirmation responses from the user
  */
+
 import { MessagePortMain } from 'electron';
 import { AgentState, AgentToRendererMessage, RendererToAgentMessage, MessageRole } from '../shared/types';
+import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
 
 let agentPort: MessagePortMain | null = null;
+let agentRuntime: AgentRuntime | null = null;
 
-/** Current agent state */
-let currentState: AgentState = AgentState.IDLE;
+/** Pending confirmation promises keyed by toolCallId */
+interface PendingConfirmation {
+  resolve: (approved: boolean) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+const pendingConfirmations = new Map<string, PendingConfirmation>();
 
 /**
- * Send a message to the renderer via MessagePort.
+ * Send a typed message to the renderer via MessagePort.
  */
 function sendToRenderer(msg: AgentToRendererMessage): void {
   if (agentPort) {
     agentPort.postMessage(msg);
+  }
+}
+
+/**
+ * Handle an agent event from the runtime and convert it to renderer messages.
+ */
+function handleAgentEvent(event: Parameters<AgentEventCallback>[0]): void {
+  switch (event.type) {
+    case 'state-change':
+      sendToRenderer({ type: 'state-change', state: event.state! });
+      break;
+
+    case 'chat-message':
+      sendToRenderer({
+        type: 'chat-message',
+        message: {
+          id: event.chatMessage!.id,
+          role: event.chatMessage!.role === 'assistant' ? MessageRole.ASSISTANT : MessageRole.TOOL,
+          content: event.chatMessage!.content,
+          timestamp: Date.now(),
+          streaming: event.chatMessage!.streaming,
+          isError: event.chatMessage!.isError,
+        },
+      });
+      break;
+
+    case 'chat-message-update':
+      sendToRenderer({
+        type: 'chat-message-update',
+        id: event.chatDelta!.id,
+        delta: event.chatDelta!.delta,
+      });
+      break;
+
+    case 'chat-message-end':
+      sendToRenderer({
+        type: 'chat-message-end',
+        id: event.chatEnd!.id,
+      });
+      break;
+
+    case 'confirmation-request':
+      sendToRenderer({
+        type: 'confirmation-request',
+        toolCallId: event.confirmationRequest!.toolCallId,
+        toolName: event.confirmationRequest!.toolName,
+        args: event.confirmationRequest!.args,
+      });
+      break;
+
+    case 'tool-execution':
+      sendToRenderer({
+        type: 'tool-execution',
+        toolCallId: event.toolExecution!.toolCallId,
+        toolName: event.toolExecution!.toolName,
+        status: event.toolExecution!.status as 'running' | 'done' | 'error',
+        result: event.toolExecution!.result,
+      });
+      break;
+
+    case 'error':
+      sendToRenderer({ type: 'error', message: event.error! });
+      break;
+  }
+}
+
+/**
+ * Create the confirmation handler that sends requests to the renderer
+ * and waits for responses via MessagePort.
+ */
+function createConfirmationHandler(): ConfirmationHandler {
+  return (toolCallId: string, toolName: string, args: Record<string, unknown>): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      // Timeout after 5 minutes - auto-reject
+      const timer = setTimeout(() => {
+        if (pendingConfirmations.has(toolCallId)) {
+          pendingConfirmations.delete(toolCallId);
+          resolve(false);
+        }
+      }, 300000);
+
+      pendingConfirmations.set(toolCallId, { resolve, timer });
+
+      // Send confirmation request to renderer
+      sendToRenderer({
+        type: 'confirmation-request',
+        toolCallId,
+        toolName,
+        args,
+      });
+    });
+  };
+}
+
+/**
+ * Initialize the agent runtime.
+ */
+async function initAgent(): Promise<void> {
+  try {
+    agentRuntime = await createAgentRuntime(
+      handleAgentEvent,
+      createConfirmationHandler()
+    );
+
+    // Send initial greeting to the renderer
+    sendToRenderer({ type: 'state-change', state: AgentState.IDLE });
+    sendToRenderer({
+      type: 'chat-message',
+      message: {
+        id: `greeting-${Date.now()}`,
+        role: MessageRole.ASSISTANT,
+        content: "Hi! I'm Clawd, your desktop AI assistant. Click on me and type a task to get started!",
+        timestamp: Date.now(),
+      },
+    });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('Failed to initialize agent runtime:', errorMessage);
+    sendToRenderer({ type: 'error', message: `Agent initialization failed: ${errorMessage}` });
+
+    // Fall back to a basic echo mode so the user gets feedback
+    sendToRenderer({ type: 'state-change', state: AgentState.IDLE });
+    sendToRenderer({
+      type: 'chat-message',
+      message: {
+        id: `fallback-${Date.now()}`,
+        role: MessageRole.ASSISTANT,
+        content: `I couldn't start the AI engine: ${errorMessage}. Please check your API key in Settings.`,
+        timestamp: Date.now(),
+      },
+    });
   }
 }
 
@@ -31,18 +171,23 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
       sendToRenderer({ type: 'pong' });
       break;
     }
+
     case 'user-input': {
-      // Placeholder: acknowledge user input and echo back
-      // In PR2, this will go through pi-agent-core tool calling
       handleUserInput(msg.text);
       break;
     }
-    case 'confirm-tool': {
-      // Placeholder for PR3 tool confirmation
+
+    case 'confirmation-response': {
+      const pending = pendingConfirmations.get(msg.toolCallId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingConfirmations.delete(msg.toolCallId);
+        pending.resolve(msg.approved);
+      }
       break;
     }
+
     default: {
-      // Exhaustive check at compile time; ignore unknown messages at runtime
       const _exhaustive: never = msg;
       console.warn('Unknown message type from renderer:', (msg as Record<string, unknown>).type);
       break;
@@ -51,46 +196,47 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
 }
 
 /**
- * Placeholder user input handler.
- * In PR2 this will use pi-agent-core + pi-ai for real agent logic.
+ * Handle user input - send to agent runtime if available, otherwise echo.
  */
-function handleUserInput(text: string): void {
-  // Simulate: GREETING -> THINKING -> IDLE with a response
-  currentState = AgentState.GREETING;
-  sendToRenderer({ type: 'state-change', state: currentState });
-
-  setTimeout(() => {
-    currentState = AgentState.THINKING;
-    sendToRenderer({ type: 'state-change', state: currentState });
-
+async function handleUserInput(text: string): Promise<void> {
+  if (agentRuntime) {
+    try {
+      await agentRuntime.prompt(text);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      sendToRenderer({ type: 'error', message: errorMessage });
+      sendToRenderer({ type: 'state-change', state: AgentState.IDLE });
+    }
+  } else {
+    // Fallback echo mode when agent runtime failed to initialize
+    sendToRenderer({ type: 'state-change', state: AgentState.GREETING });
     setTimeout(() => {
-      // Echo back a placeholder response
-      currentState = AgentState.IDLE;
-      sendToRenderer({ type: 'state-change', state: currentState });
-
-      sendToRenderer({
-        type: 'chat-message',
-        message: {
-          id: `agent-${Date.now()}`,
-          role: MessageRole.AGENT,
-          content: `I heard you say: "${text}". Agent runtime coming in PR2!`,
-          timestamp: Date.now(),
-        },
-      });
-    }, 1000);
-  }, 800);
+      sendToRenderer({ type: 'state-change', state: AgentState.THINKING });
+      setTimeout(() => {
+        sendToRenderer({ type: 'state-change', state: AgentState.IDLE });
+        sendToRenderer({
+          type: 'chat-message',
+          message: {
+            id: `echo-${Date.now()}`,
+            role: MessageRole.ASSISTANT,
+            content: `I heard you say: "${text}". Agent runtime is not available - please configure your API key.`,
+            timestamp: Date.now(),
+          },
+        });
+      }, 800);
+    }, 500);
+  }
 }
 
 /**
  * Initialize the agent process.
- * Listens for the MessagePort from the main process.
+ * Listens for the MessagePort from the main process, then starts the agent runtime.
  */
 process.parentPort.on('message', (event: unknown) => {
   const msgEvent = event as { data: { type: string }; ports: MessagePortMain[] };
   const msg = msgEvent.data;
 
   if (msg.type === 'init') {
-    // The MessagePort is transferred via event.ports
     const [port] = msgEvent.ports;
     if (port) {
       agentPort = port;
@@ -100,16 +246,9 @@ process.parentPort.on('message', (event: unknown) => {
       });
       agentPort.start();
 
-      // Send initial state to renderer
-      sendToRenderer({ type: 'state-change', state: currentState });
-      sendToRenderer({
-        type: 'chat-message',
-        message: {
-          id: `agent-greeting-${Date.now()}`,
-          role: MessageRole.AGENT,
-          content: "Hi! I'm Clawd. Click on me to give me a task!",
-          timestamp: Date.now(),
-        },
+      // Initialize the agent runtime (async, non-blocking)
+      initAgent().catch((err: unknown) => {
+        console.error('Unhandled error in agent init:', err);
       });
     }
   }
