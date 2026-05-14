@@ -274,3 +274,51 @@ declare module 'glob' {
   export function glob(pattern: string, options?: GlobOptions): Promise<string[]>;
   export function sync(pattern: string, options?: GlobOptions): string[];
 }
+
+/**
+ * Type declarations for playwright.
+ * Only the types used by the browser automation tool are declared here.
+ * When playwright is installed, its own type definitions take precedence.
+ */
+declare module 'playwright' {
+  export interface Browser {
+    isConnected(): boolean;
+    contexts(): BrowserContext[];
+    newContext(): Promise<BrowserContext>;
+    on(event: string, listener: (...args: unknown[]) => void): void;
+    close(): Promise<void>;
+  }
+
+  export interface BrowserContext {
+    pages(): Page[];
+    newPage(): Promise<Page>;
+  }
+
+  export interface Page {
+    goto(url: string, options?: { timeout?: number; waitUntil?: string }): Promise<Response | null>;
+    url(): string;
+    locator(selector: string): Locator;
+    getByText(text: string, options?: { exact?: boolean }): Locator;
+    click(selector: string, options?: { timeout?: number }): Promise<void>;
+    screenshot(options?: { type?: string; fullPage?: boolean }): Promise<Buffer>;
+    evaluate<T>(fn: () => T): Promise<T>;
+    goBack(options?: { timeout?: number; waitUntil?: string }): Promise<Response | null>;
+    goForward(options?: { timeout?: number; waitUntil?: string }): Promise<Response | null>;
+  }
+
+  export interface Locator {
+    first(): Locator;
+    click(options?: { timeout?: number }): Promise<void>;
+    fill(value: string): Promise<void>;
+    textContent(options?: { timeout?: number }): Promise<string | null>;
+  }
+
+  export interface Response {
+    status(): number;
+  }
+
+  export const chromium: {
+    connectOverCDP(endpointURL: string): Promise<Browser>;
+    launch(options?: { headless?: boolean }): Promise<Browser>;
+  };
+}

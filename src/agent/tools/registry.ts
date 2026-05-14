@@ -4,7 +4,7 @@
  * Centralizes all tool definitions and provides a single function
  * to get all registered tools. Combines tools from pi-coding-agent
  * (read, write, bash, edit, ls, find, grep) with our custom tools
- * (create_directory, delete_file, scheduler).
+ * (create_directory, delete_file, scheduler, browser_action).
  *
  * NOTE: createCodingTools() already provides `read`, so we avoid using
  * createReadOnlyTools() (which also includes `read`) to prevent duplicate
@@ -60,6 +60,8 @@ export async function getAllTools(): Promise<import('@earendil-works/pi-agent-co
     ...buildDeleteFileTool(),
     // Scheduler tools (from scheduler.ts)
     ...(await import('./scheduler')).buildSchedulerTools(),
+    // Browser automation tool (Playwright CDP)
+    ...(await import('./browser')).buildBrowserTool(),
   ];
 }
 
