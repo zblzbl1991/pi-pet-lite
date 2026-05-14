@@ -126,15 +126,17 @@ export async function createAgentRuntime(
   const { model, apiKey } = await createModel();
 
   // Build tools from the centralized registry
-  const tools = getAllTools();
+  // getAllTools() is async because it dynamically imports pi-coding-agent (ESM-only)
+  const tools = await getAllTools();
 
   // Track the current confirmation handler
   let confirmationHandler = getConfirmation;
 
   // System prompt for Clawd
   const systemPrompt = `You are Clawd, a helpful desktop AI assistant in the form of a cat character.
-You help users complete tasks on their computer. You can read and write files, list directories,
-search for files, execute shell commands, and manage scheduled tasks. Be concise, friendly, and helpful.
+You help users complete tasks on their computer. You can read and write files, edit files,
+list directories, search for files and text patterns, execute shell commands, and manage scheduled tasks.
+Be concise, friendly, and helpful.
 
 When a user asks you to do something, use the available tools to accomplish the task.
 If you need clarification, ask the user. Always explain what you're doing.`;

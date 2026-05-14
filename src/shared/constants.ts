@@ -33,13 +33,17 @@ export const AGENT_STATE_GIF_MAP: Record<AgentState, string> = {
 
 /** Trust policy for MVP - hardcoded security levels per tool */
 export const TRUST_POLICY: Record<string, TrustLevel> = {
-  read_file: TrustLevel.AUTO,
-  list_directory: TrustLevel.AUTO,
-  write_file: TrustLevel.CONFIRM_ONCE,
+  // pi-coding-agent tools
+  read: TrustLevel.AUTO,
+  ls: TrustLevel.AUTO,
+  find: TrustLevel.AUTO,
+  grep: TrustLevel.AUTO,
+  write: TrustLevel.CONFIRM_ONCE,
+  edit: TrustLevel.CONFIRM_ONCE,
+  bash: TrustLevel.CONFIRM_ONCE,
+  // Our custom tools
   create_directory: TrustLevel.AUTO,
   delete_file: TrustLevel.CONFIRM_ONCE,
-  search_files: TrustLevel.AUTO,
-  run_script: TrustLevel.CONFIRM_ONCE,
   create_schedule: TrustLevel.CONFIRM_ONCE,
   list_schedules: TrustLevel.AUTO,
   delete_schedule: TrustLevel.CONFIRM_ONCE,
