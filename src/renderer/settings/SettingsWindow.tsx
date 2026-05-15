@@ -13,6 +13,9 @@ interface ModelOption {
   label: string;
 }
 
+/** Sentinel value used when the user picks "Custom" in a model dropdown */
+const CUSTOM_MODEL_VALUE = '__custom__';
+
 const PROVIDERS: ProviderOption[] = [
   {
     value: 'openai',
@@ -44,8 +47,10 @@ const PROVIDERS: ProviderOption[] = [
     value: 'deepseek',
     label: 'DeepSeek',
     models: [
-      { value: 'deepseek-chat', label: 'DeepSeek Chat' },
-      { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' },
+      { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+      { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+      { value: 'deepseek-chat', label: 'DeepSeek Chat (compat)' },
+      { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner (compat)' },
     ],
   },
   {
@@ -69,6 +74,7 @@ type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 export const SettingsWindow: React.FC = () => {
   const [provider, setProvider] = useState('openai');
   const [model, setModel] = useState('gpt-4o');
+  const [customModelValue, setCustomModelValue] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
@@ -76,14 +82,38 @@ export const SettingsWindow: React.FC = () => {
   const [saveMessage, setSaveMessage] = useState('');
   const [hasLoaded, setHasLoaded] = useState(false);
 
+  /** Whether the current model selection is the "Custom" sentinel */
+  const isCustomModel = model === CUSTOM_MODEL_VALUE;
+
+  /** The effective model value to use (custom text or predefined model id) */
+  const effectiveModel = isCustomModel ? customModelValue : model;
+
   // Load current config on mount
   useEffect(() => {
     if (!window.settingsAPI) return;
     window.settingsAPI.loadConfig().then((config) => {
       if (config) {
-        setProvider(config.provider || 'openai');
-        setModel(config.model || 'gpt-4o');
+        const loadedProvider = config.provider || 'openai';
+        const loadedModel = config.model || '';
+        setProvider(loadedProvider);
         setApiKey(config.apiKey || '');
+
+        // Check if the saved model is a predefined option for its provider
+        const providerOpt = PROVIDERS.find((p) => p.value === loadedProvider);
+        const isPredefined = providerOpt
+          ? providerOpt.models.some((m) => m.value === loadedModel)
+          : false;
+
+        if (providerOpt && providerOpt.models.length > 0 && isPredefined) {
+          setModel(loadedModel);
+        } else if (providerOpt && providerOpt.models.length > 0 && !isPredefined && loadedModel) {
+          // Saved model is not in the predefined list -- switch to custom mode
+          setModel(CUSTOM_MODEL_VALUE);
+          setCustomModelValue(loadedModel);
+        } else {
+          // Provider has no predefined models (e.g. OpenRouter) -- just use the raw value
+          setModel(loadedModel);
+        }
       }
       setHasLoaded(true);
     }).catch(() => {
@@ -96,6 +126,7 @@ export const SettingsWindow: React.FC = () => {
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const newProvider = e.target.value;
       setProvider(newProvider);
+      setCustomModelValue('');
       setConnectionStatus('idle');
       setConnectionMessage('');
       setSaveMessage('');
@@ -113,6 +144,16 @@ export const SettingsWindow: React.FC = () => {
   const handleModelChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
       setModel(e.target.value);
+      setConnectionStatus('idle');
+      setConnectionMessage('');
+      setSaveMessage('');
+    },
+    []
+  );
+
+  const handleCustomModelChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setCustomModelValue(e.target.value);
       setConnectionStatus('idle');
       setConnectionMessage('');
       setSaveMessage('');
@@ -140,7 +181,7 @@ export const SettingsWindow: React.FC = () => {
     try {
       const result = await window.settingsAPI.testConnection({
         provider,
-        model: model || 'gpt-4o',
+        model: effectiveModel || 'gpt-4o',
         apiKey,
       });
       if (result.success) {
@@ -156,14 +197,14 @@ export const SettingsWindow: React.FC = () => {
         err instanceof Error ? err.message : 'Connection test failed'
       );
     }
-  }, [provider, model, apiKey]);
+  }, [provider, effectiveModel, apiKey]);
 
   const handleSave = useCallback(async () => {
     if (!window.settingsAPI) return;
 
     const config: LLMConfig = {
       provider,
-      model: model || 'gpt-4o',
+      model: effectiveModel || 'gpt-4o',
       apiKey,
     };
 
@@ -186,7 +227,7 @@ export const SettingsWindow: React.FC = () => {
     setTimeout(() => {
       setSaveMessage('');
     }, 3000);
-  }, [provider, model, apiKey]);
+  }, [provider, effectiveModel, apiKey]);
 
   const handleClose = useCallback(() => {
     if (window.settingsAPI) {
@@ -195,7 +236,7 @@ export const SettingsWindow: React.FC = () => {
   }, []);
 
   const currentProvider = PROVIDERS.find((p) => p.value === provider);
-  const isFormValid = provider && model && apiKey.trim().length > 0;
+  const isFormValid = provider && effectiveModel && apiKey.trim().length > 0;
 
   // Styles
   const styles: Record<string, React.CSSProperties> = {
@@ -359,17 +400,34 @@ export const SettingsWindow: React.FC = () => {
       <div style={styles.section}>
         <label style={styles.label}>Model</label>
         {currentProvider && currentProvider.models.length > 0 ? (
-          <select
-            value={model}
-            onChange={handleModelChange}
-            style={styles.select}
-          >
-            {currentProvider.models.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <>
+            <select
+              value={model}
+              onChange={handleModelChange}
+              style={styles.select}
+            >
+              {currentProvider.models.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+              <option value={CUSTOM_MODEL_VALUE}>Custom...</option>
+            </select>
+            {isCustomModel && (
+              <>
+                <input
+                  type="text"
+                  value={customModelValue}
+                  onChange={handleCustomModelChange}
+                  placeholder="Enter custom model name"
+                  style={{ ...styles.input, marginTop: 8 }}
+                />
+                <div style={styles.modelInputNote}>
+                  Enter any model name supported by {currentProvider.label}
+                </div>
+              </>
+            )}
+          </>
         ) : (
           <>
             <input
