@@ -14,12 +14,12 @@ export function createPetWindow(
   const { width, height } = primary.workArea;
 
   const petSize = 128;
-  const petLocalX = (400 - petSize) / 2;
-  const petLocalY = 550 - petSize;
+  const petLocalX = (160 - petSize) / 2;
+  const petLocalY = 160 - petSize;
 
   const win = new BrowserWindow({
-    width: 400,
-    height: 550,
+    width: 160,
+    height: 160,
     x: Math.round(width * 0.45 - petLocalX),
     y: Math.round(height * 0.65 - petLocalY),
     transparent: true,

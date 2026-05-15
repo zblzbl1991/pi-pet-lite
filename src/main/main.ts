@@ -246,7 +246,7 @@ function bootstrap(): void {
           let position: { x: number; y: number } | undefined;
           if (petWindow && !petWindow.isDestroyed()) {
             const [px, py] = petWindow.getPosition();
-            position = computeChatPosition(px, py, 400, 550);
+            position = computeChatPosition(px, py, 160, 160);
           }
           createChatWindow(chatHtmlPath, chatPreloadPath, position);
         } else {
@@ -301,7 +301,7 @@ function bootstrap(): void {
       let position: { x: number; y: number } | undefined;
       if (petWindow && !petWindow.isDestroyed()) {
         const [px, py] = petWindow.getPosition();
-        position = computeChatPosition(px, py, 400, 550);
+        position = computeChatPosition(px, py, 160, 160);
       }
 
       createChatWindow(chatHtmlPath, chatPreloadPath, position);
