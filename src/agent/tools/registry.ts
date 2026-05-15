@@ -20,9 +20,14 @@ export type { ScheduleFireCallback } from './scheduler';
 /** Cached pi-coding-agent tools module */
 let piToolsModule: typeof import('@earendil-works/pi-coding-agent') | null = null;
 
+/** True dynamic import bypassing TypeScript CJS transpilation */
+const dynamicImport = new Function('modulePath', 'return import(modulePath)') as <T>(
+  modulePath: string
+) => Promise<T>;
+
 async function loadPiCodingTools() {
   if (!piToolsModule) {
-    piToolsModule = await import('@earendil-works/pi-coding-agent');
+    piToolsModule = await dynamicImport<typeof import('@earendil-works/pi-coding-agent')>('@earendil-works/pi-coding-agent');
   }
   return piToolsModule;
 }

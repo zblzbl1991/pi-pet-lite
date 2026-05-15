@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 
 interface ConfirmationRequest {
   toolCallId: string;
@@ -9,43 +9,24 @@ interface ConfirmationRequest {
 interface ChatBubbleProps {
   message: string | null;
   streamingMessageId: string | null;
-  inputVisible: boolean;
-  inputValue: string;
   confirmation: ConfirmationRequest | null;
   toolStatus: { toolName: string; status: string } | null;
-  onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  onSubmit: () => void;
   onConfirmResponse: (toolCallId: string, approved: boolean) => void;
 }
 
 /**
- * Chat bubble component displayed above the Clawd pet.
- * Shows agent messages, streaming text, tool execution status,
- * confirmation requests with approve/reject buttons,
- * and a text input for user commands.
+ * Mini chat bubble displayed above the Clawd pet.
+ * Shows the latest agent message, tool status, and confirmation requests.
+ * Input has moved to the ChatWindow — this bubble is read-only.
  */
 export const ChatBubble: React.FC<ChatBubbleProps> = ({
   message,
   streamingMessageId,
-  inputVisible,
-  inputValue,
   confirmation,
   toolStatus,
-  onInputChange,
-  onKeyDown,
-  onSubmit,
   onConfirmResponse,
 }) => {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const isVisible = message !== null || inputVisible || confirmation !== null;
-
-  // Auto-focus input when it becomes visible
-  useEffect(() => {
-    if (inputVisible && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [inputVisible]);
+  const isVisible = message !== null || confirmation !== null;
 
   /** Render a truncated preview of tool arguments */
   const renderArgsPreview = (args: Record<string, unknown>): string => {
@@ -78,7 +59,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
         pointerEvents: isVisible ? 'auto' : 'none',
       }}
     >
-      {/* Main speech bubble */}
+      {/* Main speech bubble — mini (one-line summary) */}
       {message && (
         <div
           style={{
@@ -88,13 +69,15 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
             borderRadius: 14,
             padding: '10px 16px',
             fontSize: 13,
-            maxWidth: 320,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
+            maxWidth: 280,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
             lineHeight: 1.4,
             backdropFilter: 'blur(8px)',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
           }}
+          title={message}
         >
           {message}
           {/* Streaming cursor indicator */}
@@ -136,10 +119,20 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: toolStatus.status === 'running' ? '#f0ad4e' : toolStatus.status === 'done' ? '#5cb85c' : '#d9534f',
+              background:
+                toolStatus.status === 'running'
+                  ? '#f0ad4e'
+                  : toolStatus.status === 'done'
+                    ? '#5cb85c'
+                    : '#d9534f',
             }}
           />
-          {toolStatus.status === 'running' ? 'Running' : toolStatus.status === 'done' ? 'Done' : 'Error'}: {toolStatus.toolName}
+          {toolStatus.status === 'running'
+            ? 'Running'
+            : toolStatus.status === 'done'
+              ? 'Done'
+              : 'Error'}
+          : {toolStatus.toolName}
         </div>
       )}
 
@@ -157,13 +150,34 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
           }}
         >
-          <div style={{ fontSize: 12, color: '#f0ad4e', marginBottom: 4, fontWeight: 600 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: '#f0ad4e',
+              marginBottom: 4,
+              fontWeight: 600,
+            }}
+          >
             Confirm: {confirmation.toolName}
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(200, 200, 210, 0.8)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+          <div
+            style={{
+              fontSize: 11,
+              color: 'rgba(200, 200, 210, 0.8)',
+              fontFamily: 'monospace',
+              wordBreak: 'break-all',
+            }}
+          >
             {renderArgsPreview(confirmation.args)}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              marginTop: 8,
+              justifyContent: 'flex-end',
+            }}
+          >
             <button
               onClick={() => onConfirmResponse(confirmation.toolCallId, false)}
               style={{
@@ -193,57 +207,6 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
               Allow
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Input field */}
-      {inputVisible && (
-        <div
-          style={{
-            marginTop: 6,
-            width: 280,
-            background: 'rgba(26, 28, 31, 0.95)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            borderRadius: 10,
-            padding: '8px 12px',
-            display: 'flex',
-            alignItems: 'center',
-            backdropFilter: 'blur(8px)',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-          }}
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={onInputChange}
-            onKeyDown={onKeyDown}
-            placeholder="Tell Clawd what to do..."
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: '#F0F1F2',
-              fontSize: 13,
-              fontFamily: 'inherit',
-            }}
-          />
-          <button
-            onClick={onSubmit}
-            style={{
-              background: 'rgba(80, 180, 120, 0.8)',
-              border: 'none',
-              borderRadius: 6,
-              color: '#fff',
-              padding: '4px 10px',
-              fontSize: 12,
-              cursor: 'pointer',
-              marginLeft: 8,
-            }}
-          >
-            Send
-          </button>
         </div>
       )}
 

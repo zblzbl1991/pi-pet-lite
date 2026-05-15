@@ -58,9 +58,17 @@ export interface LLMConfig {
   baseUrl?: string;
 }
 
+/** Notification method configuration */
+export interface NotificationConfig {
+  systemToast: boolean;
+  petBubble: boolean;
+  petAnimation: boolean;
+}
+
 /** Application configuration */
 export interface AppConfig {
   llm: LLMConfig;
+  notifications: NotificationConfig;
 }
 
 /** Messages sent from renderer to agent via MessagePort */
@@ -88,12 +96,22 @@ export interface MainIPCChannels {
   'open-settings': () => void;
 }
 
-/** Exposed via contextBridge in preload */
-export interface ElectronAPI {
+/** Exposed via contextBridge in pet preload */
+export interface PetElectronAPI {
   setIgnoreMouseEvents: (ignore: boolean) => void;
   moveWindow: (deltaX: number, deltaY: number) => void;
   getWindowPosition: () => Promise<{ x: number; y: number }>;
   openSettings: () => void;
+  openChat: () => void;
   onAgentMessage: (callback: (msg: AgentToRendererMessage) => void) => () => void;
   sendToAgent: (msg: RendererToAgentMessage) => void;
+  petDragStart: (offset: { x: number; y: number }) => void;
+  petDragEnd: () => void;
+}
+
+/** Exposed via contextBridge in chat preload */
+export interface ChatElectronAPI {
+  onAgentMessage: (callback: (msg: AgentToRendererMessage) => void) => () => void;
+  sendToAgent: (msg: RendererToAgentMessage) => void;
+  syncHistory: () => Promise<ChatMessage[]>;
 }

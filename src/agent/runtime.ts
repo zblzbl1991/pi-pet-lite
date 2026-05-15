@@ -34,16 +34,24 @@ type PiToolExecutionMode = import('@earendil-works/pi-agent-core').ToolExecution
 let piAgentCoreModule: typeof import('@earendil-works/pi-agent-core') | null = null;
 let piAiModule: typeof import('@earendil-works/pi-ai') | null = null;
 
+/**
+ * True dynamic import that bypasses TypeScript's CJS transpilation.
+ * See llm.ts for explanation.
+ */
+const dynamicImport = new Function('modulePath', 'return import(modulePath)') as <T>(
+  modulePath: string
+) => Promise<T>;
+
 async function loadPiAgentCore() {
   if (!piAgentCoreModule) {
-    piAgentCoreModule = await import('@earendil-works/pi-agent-core');
+    piAgentCoreModule = await dynamicImport<typeof import('@earendil-works/pi-agent-core')>('@earendil-works/pi-agent-core');
   }
   return piAgentCoreModule;
 }
 
 async function loadPiAi() {
   if (!piAiModule) {
-    piAiModule = await import('@earendil-works/pi-ai');
+    piAiModule = await dynamicImport<typeof import('@earendil-works/pi-ai')>('@earendil-works/pi-ai');
   }
   return piAiModule;
 }

@@ -7,9 +7,7 @@ import {
   MessageRole,
   AgentToRendererMessage,
 } from '../../shared/types';
-
-/** Default pet position as fractions of screen dimensions */
-const DEFAULT_POSITION = { xFraction: 0.45, yFraction: 0.65 };
+import type { PetElectronAPI } from '../../shared/types';
 
 /** Interface for active tool confirmation requests */
 interface ConfirmationRequest {
@@ -27,13 +25,9 @@ interface ToolStatus {
 export const PetWindow: React.FC = () => {
   const [agentState, setAgentState] = useState<AgentState>(AgentState.IDLE);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [isInputVisible, setIsInputVisible] = useState(false);
-  const [petPosition, setPetPosition] = useState(DEFAULT_POSITION);
 
-  // Streaming state: track the ID of the message currently being streamed
+  // Streaming state
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  // Ref to keep the latest streaming message content for display
   const streamingContentRef = useRef<Map<string, string>>(new Map());
 
   // Confirmation state
@@ -45,14 +39,21 @@ export const PetWindow: React.FC = () => {
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
+  const pointerDownRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
-  const petStartRef = useRef({ x: 0, y: 0 });
 
-  // Set up MessagePort listener for agent messages
+  // petContainerRef: full window, used for click-through hit-test only
+  const petContainerRef = useRef<HTMLDivElement>(null);
+  // petAreaRef: pet animation wrapper, receives pointer events + click
+  const petAreaRef = useRef<HTMLDivElement>(null);
+
+  const api = window.electronAPI as PetElectronAPI | undefined;
+
+  // Listen for agent messages via IPC
   useEffect(() => {
-    if (!window.electronAPI?.onAgentMessage) return;
+    if (!api?.onAgentMessage) return;
 
-    const unsubscribe = window.electronAPI.onAgentMessage(
+    const unsubscribe = api.onAgentMessage(
       (msg: AgentToRendererMessage) => {
         switch (msg.type) {
           case 'state-change':
@@ -73,7 +74,6 @@ export const PetWindow: React.FC = () => {
               id,
               (streamingContentRef.current.get(id) ?? '') + delta
             );
-            // Force a re-render by updating the messages array with the new content
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === id
@@ -86,7 +86,6 @@ export const PetWindow: React.FC = () => {
 
           case 'chat-message-end': {
             setStreamingMessageId((prevId) => (prevId === msg.id ? null : prevId));
-            // Mark message as no longer streaming
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === msg.id ? { ...m, streaming: false } : m
@@ -96,7 +95,6 @@ export const PetWindow: React.FC = () => {
           }
 
           case 'pong':
-            // Ping response
             break;
 
           case 'confirmation-request':
@@ -112,7 +110,6 @@ export const PetWindow: React.FC = () => {
               toolName: msg.toolName,
               status: msg.status,
             });
-            // Clear tool status after completion
             if (msg.status === 'done' || msg.status === 'error') {
               setTimeout(() => {
                 setToolStatus((prev) =>
@@ -123,7 +120,6 @@ export const PetWindow: React.FC = () => {
             break;
 
           case 'error':
-            // Show error as a system message
             setMessages((prev) => [
               ...prev,
               {
@@ -136,155 +132,125 @@ export const PetWindow: React.FC = () => {
             break;
 
           default: {
-            // Exhaustive check - ensures all AgentToRendererMessage types are handled
             const _exhaustive: never = msg;
-            console.warn('Unhandled agent message:', (_exhaustive as Record<string, unknown>).type);
+            console.warn(
+              'Unhandled agent message:',
+              (_exhaustive as Record<string, unknown>).type
+            );
             break;
           }
         }
       }
     );
 
-    return unsubscribe;
-  }, []);
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [api]);
 
   // Send a ping to the agent on mount to verify connection
   useEffect(() => {
-    if (window.electronAPI?.sendToAgent) {
-      window.electronAPI.sendToAgent({ type: 'ping' });
+    if (api?.sendToAgent) {
+      api.sendToAgent({ type: 'ping' });
     }
-  }, []);
-
-  const handleSendMessage = useCallback(() => {
-    const text = inputText.trim();
-    if (!text) return;
-
-    // Add user message to local state
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: MessageRole.USER,
-      content: text,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
-
-    // Send to agent
-    if (window.electronAPI?.sendToAgent) {
-      window.electronAPI.sendToAgent({ type: 'user-input', text });
-    }
-
-    setInputText('');
-    setIsInputVisible(false);
-  }, [inputText]);
+  }, [api]);
 
   const handleConfirmResponse = useCallback(
     (toolCallId: string, approved: boolean) => {
       setConfirmation(null);
-      if (window.electronAPI?.sendToAgent) {
-        window.electronAPI.sendToAgent({
+      if (api?.sendToAgent) {
+        api.sendToAgent({
           type: 'confirmation-response',
           toolCallId,
           approved,
         });
       }
     },
-    []
+    [api]
   );
 
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setInputText(e.target.value);
-    },
-    []
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSendMessage();
-      } else if (e.key === 'Escape') {
-        setIsInputVisible(false);
-        setInputText('');
-      }
-      e.stopPropagation();
-    },
-    [handleSendMessage]
-  );
-
-  // Handle pet click - toggle input visibility
+  // Handle pet click - open chat window
   const handlePetClick = useCallback(() => {
     if (!isDraggingRef.current) {
-      setIsInputVisible((prev) => !prev);
+      api?.openChat?.();
     }
-  }, []);
+  }, [api]);
 
-  // Drag handlers
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  // ---- Pointer-based drag — ONLY on pet area ----
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      const petEl = petAreaRef.current;
+      if (!petEl) return;
+
+      try {
+        petEl.setPointerCapture(e.nativeEvent.pointerId);
+      } catch {
+        // setPointerCapture can fail in some Electron versions
+      }
+
       isDraggingRef.current = false;
+      pointerDownRef.current = true;
       setIsDragging(false);
       dragStartRef.current = { x: e.screenX, y: e.screenY };
-      petStartRef.current = {
-        x: petPosition.xFraction * window.innerWidth,
-        y: petPosition.yFraction * window.innerHeight,
-      };
-
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        const deltaX = moveEvent.screenX - dragStartRef.current.x;
-        const deltaY = moveEvent.screenY - dragStartRef.current.y;
-        if (!isDraggingRef.current && (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3)) {
-          isDraggingRef.current = true;
-          setIsDragging(true);
-        }
-        if (isDraggingRef.current) {
-          const newX = petStartRef.current.x + deltaX;
-          const newY = petStartRef.current.y + deltaY;
-          setPetPosition({
-            xFraction: Math.max(0, Math.min(1, newX / window.innerWidth)),
-            yFraction: Math.max(0, Math.min(1, newY / window.innerHeight)),
-          });
-        }
-      };
-
-      const handleMouseUp = () => {
-        setTimeout(() => {
-          isDraggingRef.current = false;
-          setIsDragging(false);
-        }, 0);
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    },
-    [petPosition]
-  );
-
-  // Hit testing for click-through toggle
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!window.electronAPI?.setIgnoreMouseEvents) return;
-
-      const rect = e.currentTarget.getBoundingClientRect();
-      const localX = e.clientX - rect.left;
-      const localY = e.clientY - rect.top;
-
-      const isOverPet =
-        localX >= 0 &&
-        localX <= rect.width &&
-        localY >= 0 &&
-        localY <= rect.height;
-
-      window.electronAPI.setIgnoreMouseEvents(!isOverPet);
     },
     []
   );
 
-  // Compute pixel position from fractions
-  const petX = petPosition.xFraction * window.innerWidth;
-  const petY = petPosition.yFraction * window.innerHeight;
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (isDraggingRef.current) return;
+      if (!pointerDownRef.current) return;
+
+      const dx = e.screenX - dragStartRef.current.x;
+      const dy = e.screenY - dragStartRef.current.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        isDraggingRef.current = true;
+        setIsDragging(true);
+
+        const offset = {
+          x: e.screenX - window.screenX,
+          y: e.screenY - window.screenY,
+        };
+        api?.petDragStart?.(offset);
+      }
+    },
+    [api]
+  );
+
+  const handlePointerUp = useCallback(() => {
+    if (isDraggingRef.current) {
+      api?.petDragEnd?.();
+    }
+    setTimeout(() => {
+      isDraggingRef.current = false;
+      pointerDownRef.current = false;
+      setIsDragging(false);
+    }, 0);
+  }, [api]);
+
+  // Click-through toggle via hit testing on the full container.
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!api?.setIgnoreMouseEvents) return;
+      if (isDraggingRef.current) return;
+
+      const petEl = petAreaRef.current;
+      if (!petEl) return;
+
+      const rect = petEl.getBoundingClientRect();
+      const isOverPet =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+
+      api.setIgnoreMouseEvents(!isOverPet);
+    };
+
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    return () => document.removeEventListener('mousemove', handleGlobalMouseMove);
+  }, [api]);
 
   // Get the latest assistant/tool message for the chat bubble
   const latestAgentMessage = [...messages]
@@ -293,36 +259,37 @@ export const PetWindow: React.FC = () => {
 
   return (
     <div
+      ref={petContainerRef}
       style={{
-        position: 'absolute',
-        left: petX,
-        top: petY,
+        width: '100%',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        cursor: isDragging ? 'grabbing' : 'grab',
+        justifyContent: 'flex-end',
+        paddingTop: 10,
       }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
     >
-      {/* Chat bubble above the pet */}
+      {/* Chat bubble — read-only, no drag/click */}
       <ChatBubble
         message={latestAgentMessage?.content ?? null}
         streamingMessageId={
           latestAgentMessage?.id === streamingMessageId ? streamingMessageId : null
         }
-        inputVisible={isInputVisible}
-        inputValue={inputText}
         confirmation={confirmation}
         toolStatus={toolStatus}
-        onInputChange={handleInputChange}
-        onKeyDown={handleKeyDown}
-        onSubmit={handleSendMessage}
         onConfirmResponse={handleConfirmResponse}
       />
 
-      {/* Pet animation */}
-      <div onClick={handlePetClick} style={{ cursor: 'pointer' }}>
+      {/* Pet area — drag + click to open chat */}
+      <div
+        ref={petAreaRef}
+        onClick={handlePetClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        style={{ cursor: isDragging ? 'grabbing' : 'pointer' }}
+      >
         <PetAnimator state={agentState} />
       </div>
     </div>

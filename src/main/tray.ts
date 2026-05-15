@@ -7,7 +7,8 @@ let tray: Tray | null = null;
  */
 export function createTray(
   onOpenSettings: () => void,
-  onToggleVisibility: () => void
+  onToggleVisibility: () => void,
+  onOpenDevTools: () => void
 ): Tray {
   // Create a simple programmatic tray icon (16x16 green circle)
   const size = 16;
@@ -50,6 +51,12 @@ export function createTray(
       label: 'Settings',
       click: () => {
         onOpenSettings();
+      },
+    },
+    {
+      label: 'DevTools',
+      click: () => {
+        onOpenDevTools();
       },
     },
     { type: 'separator' },

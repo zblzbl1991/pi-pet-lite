@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { LLMConfig } from '../../shared/types';
+import type { LLMConfig, NotificationConfig } from '../../shared/types';
 
 /** Provider option with display label and available models */
 interface ProviderOption {
@@ -82,6 +82,14 @@ export const SettingsWindow: React.FC = () => {
   const [saveMessage, setSaveMessage] = useState('');
   const [hasLoaded, setHasLoaded] = useState(false);
 
+  // Notification config state
+  const [notifConfig, setNotifConfig] = useState<NotificationConfig>({
+    systemToast: true,
+    petBubble: true,
+    petAnimation: true,
+  });
+  const [notifSaveMessage, setNotifSaveMessage] = useState('');
+
   /** Whether the current model selection is the "Custom" sentinel */
   const isCustomModel = model === CUSTOM_MODEL_VALUE;
 
@@ -118,6 +126,11 @@ export const SettingsWindow: React.FC = () => {
       setHasLoaded(true);
     }).catch(() => {
       setHasLoaded(true);
+    });
+
+    // Load notification config
+    window.settingsAPI?.loadNotificationConfig?.().then((cfg) => {
+      if (cfg) setNotifConfig(cfg);
     });
   }, []);
 
@@ -234,6 +247,28 @@ export const SettingsWindow: React.FC = () => {
       window.settingsAPI.closeWindow();
     }
   }, []);
+
+  const handleNotifToggle = useCallback(
+    (key: keyof NotificationConfig) => {
+      setNotifConfig((prev) => {
+        const next = { ...prev, [key]: !prev[key] };
+        // Auto-save on toggle
+        window.settingsAPI?.saveNotificationConfig?.(next).then((result) => {
+          if (result?.success) {
+            setNotifSaveMessage('Notification settings saved');
+          } else {
+            setNotifSaveMessage(result?.error || 'Failed to save');
+          }
+          setTimeout(() => setNotifSaveMessage(''), 2000);
+        });
+        return next;
+      });
+    },
+    []
+  );
+
+  const allNotificationsOff =
+    !notifConfig.systemToast && !notifConfig.petBubble && !notifConfig.petAnimation;
 
   const currentProvider = PROVIDERS.find((p) => p.value === provider);
   const isFormValid = provider && effectiveModel && apiKey.trim().length > 0;
@@ -532,6 +567,81 @@ export const SettingsWindow: React.FC = () => {
         <div style={{ fontSize: 12, color: 'rgba(200, 200, 210, 0.4)' }}>
           Your API key is stored locally on this device and never sent to our servers.
         </div>
+      </div>
+
+      {/* Notifications section */}
+      <div style={{ ...styles.section, marginTop: 24, paddingTop: 20, borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+        <div style={{ ...styles.title, fontSize: 16, marginBottom: 16 }}>Notifications</div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={notifConfig.systemToast}
+              onChange={() => handleNotifToggle('systemToast')}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <div>
+              <div style={{ fontSize: 14, color: '#F0F1F2' }}>System Toast</div>
+              <div style={{ fontSize: 11, color: 'rgba(200, 200, 210, 0.5)' }}>
+                Windows notification when task completes
+              </div>
+            </div>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={notifConfig.petBubble}
+              onChange={() => handleNotifToggle('petBubble')}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <div>
+              <div style={{ fontSize: 14, color: '#F0F1F2' }}>Pet Bubble</div>
+              <div style={{ fontSize: 11, color: 'rgba(200, 200, 210, 0.5)' }}>
+                Show result summary above the pet
+              </div>
+            </div>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={notifConfig.petAnimation}
+              onChange={() => handleNotifToggle('petAnimation')}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <div>
+              <div style={{ fontSize: 14, color: '#F0F1F2' }}>Pet Animation</div>
+              <div style={{ fontSize: 11, color: 'rgba(200, 200, 210, 0.5)' }}>
+                Play success/failure animation on the pet
+              </div>
+            </div>
+          </label>
+        </div>
+
+        {allNotificationsOff && (
+          <div style={{
+            marginTop: 12,
+            padding: '8px 12px',
+            borderRadius: 6,
+            background: 'rgba(240, 173, 78, 0.1)',
+            color: '#f0ad4e',
+            fontSize: 12,
+          }}>
+            All notifications are off — you won&apos;t be reminded when tasks complete.
+          </div>
+        )}
+
+        {notifSaveMessage && (
+          <div style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: notifSaveMessage.includes('Failed') ? '#d9534f' : '#5cb85c',
+          }}>
+            {notifSaveMessage}
+          </div>
+        )}
       </div>
     </div>
   );

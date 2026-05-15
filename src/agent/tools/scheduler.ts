@@ -16,6 +16,22 @@ import * as cron from 'node-cron';
 import { Type } from 'typebox';
 import { SCHEDULES_FILENAME } from '../../shared/constants';
 
+/**
+ * Resolve the Electron userData path.
+ * Works in both the main process (via app.getPath) and utility processes
+ * (via CLAWD_USER_DATA env var set by main.ts).
+ */
+function getUserDataPath(): string {
+  if (app && typeof app.getPath === 'function') {
+    return app.getPath('userData');
+  }
+  const envPath = process.env.CLAWD_USER_DATA;
+  if (envPath) {
+    return envPath;
+  }
+  throw new Error('Cannot determine userData path: not in main process and CLAWD_USER_DATA env not set');
+}
+
 // ---------------------------------------------------------------------------
 // Type aliases for pi-agent-core types
 // ---------------------------------------------------------------------------
@@ -43,7 +59,7 @@ export interface ScheduledTask {
 // Schedule persistence
 // ---------------------------------------------------------------------------
 function getSchedulesPath(): string {
-  return path.join(app.getPath('userData'), SCHEDULES_FILENAME);
+  return path.join(getUserDataPath(), SCHEDULES_FILENAME);
 }
 
 function readSchedules(): ScheduledTask[] {

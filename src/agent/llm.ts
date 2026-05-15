@@ -19,12 +19,22 @@ type PiModel = import('@earendil-works/pi-ai').Model<import('@earendil-works/pi-
 let piAiModule: typeof import('@earendil-works/pi-ai') | null = null;
 
 /**
+ * True dynamic import that bypasses TypeScript's CJS transpilation.
+ * TypeScript with `module: "commonjs"` rewrites `import()` to `require()`,
+ * which fails for ESM-only packages. The Function constructor trick
+ * forces the runtime to use the native `import()`.
+ */
+const dynamicImport = new Function('modulePath', 'return import(modulePath)') as (
+  modulePath: string
+) => Promise<typeof import('@earendil-works/pi-ai')>;
+
+/**
  * Dynamically import pi-ai (ESM module).
  * Caches the module reference after first import.
  */
 async function loadPiAi(): Promise<typeof import('@earendil-works/pi-ai')> {
   if (!piAiModule) {
-    piAiModule = await import('@earendil-works/pi-ai');
+    piAiModule = await dynamicImport('@earendil-works/pi-ai');
   }
   return piAiModule;
 }

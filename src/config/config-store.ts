@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
-import { AppConfig, LLMConfig } from '../shared/types';
+import { AppConfig, LLMConfig, NotificationConfig } from '../shared/types';
 import { CONFIG_FILENAME } from '../shared/constants';
 
 /**
@@ -9,8 +9,21 @@ import { CONFIG_FILENAME } from '../shared/constants';
  * Config file is stored in the user data directory.
  */
 
+function getUserDataPath(): string {
+  // app.getPath('userData') is only available in the main process.
+  // In utility processes, read the path from the env var set by main.ts.
+  if (app && typeof app.getPath === 'function') {
+    return app.getPath('userData');
+  }
+  const envPath = process.env.CLAWD_USER_DATA;
+  if (envPath) {
+    return envPath;
+  }
+  throw new Error('Cannot determine userData path: not in main process and CLAWD_USER_DATA env not set');
+}
+
 function getConfigPath(): string {
-  return path.join(app.getPath('userData'), CONFIG_FILENAME);
+  return path.join(getUserDataPath(), CONFIG_FILENAME);
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -18,6 +31,11 @@ const DEFAULT_CONFIG: AppConfig = {
     provider: 'openai',
     apiKey: '',
     model: 'gpt-4o',
+  },
+  notifications: {
+    systemToast: true,
+    petBubble: true,
+    petAnimation: true,
   },
 };
 
@@ -37,6 +55,10 @@ export function readConfig(): AppConfig {
       llm: {
         ...DEFAULT_CONFIG.llm,
         ...parsed.llm,
+      },
+      notifications: {
+        ...DEFAULT_CONFIG.notifications,
+        ...parsed.notifications,
       },
     };
   } catch {
@@ -62,9 +84,26 @@ export function writeConfig(config: AppConfig): void {
 export function updateLLMConfig(llm: Partial<LLMConfig>): AppConfig {
   const current = readConfig();
   const updated: AppConfig = {
+    ...current,
     llm: {
       ...current.llm,
       ...llm,
+    },
+  };
+  writeConfig(updated);
+  return updated;
+}
+
+/**
+ * Update only the notification config section.
+ */
+export function updateNotificationConfig(notifications: Partial<NotificationConfig>): AppConfig {
+  const current = readConfig();
+  const updated: AppConfig = {
+    ...current,
+    notifications: {
+      ...current.notifications,
+      ...notifications,
     },
   };
   writeConfig(updated);

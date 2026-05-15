@@ -55,3 +55,16 @@ export const SCHEDULES_FILENAME = 'clawd-schedules.json';
 
 /** Config file name */
 export const CONFIG_FILENAME = 'clawd-config.json';
+
+/** IPC channels for main↔renderer communication */
+export const IPC_AGENT_MESSAGE = 'agent-message';
+export const IPC_RENDERER_TO_AGENT = 'renderer-to-agent';
+export const IPC_CHAT_SYNC = 'chat:sync-history';
+export const IPC_OPEN_CHAT = 'open-chat';
+
+/** Chat window dimensions */
+export const CHAT_WINDOW_WIDTH = 400;
+export const CHAT_WINDOW_HEIGHT = 600;
+
+/** Maximum messages kept in main-process ring buffer */
+export const MESSAGE_BUFFER_MAX = 200;

@@ -1,14 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { AGENT_MESSAGE_PORT } from '../shared/constants';
-
-let agentPort: MessagePort | null = null;
 
 /**
  * Preload script for the pet BrowserWindow.
- * Exposes ElectronAPI via contextBridge.
- *
- * NOTE: This file is compiled separately as CommonJS (not bundled by Vite).
- * It runs in the preload context with Node.js access.
+ * Uses IPC for all communication with main process (no MessagePort).
  */
 
 const api = {
@@ -21,43 +15,45 @@ const api = {
   },
 
   getWindowPosition(): Promise<{ x: number; y: number }> {
-    return ipcRenderer.invoke('get-window-position') as Promise<{ x: number; y: number }>;
+    return ipcRenderer.invoke('get-window-position') as Promise<{
+      x: number;
+      y: number;
+    }>;
   },
 
   openSettings(): void {
     ipcRenderer.send('open-settings');
   },
 
+  openChat(): void {
+    ipcRenderer.send('open-chat');
+  },
+
+  petDragStart(offset: { x: number; y: number }): void {
+    ipcRenderer.send('pet-drag-start', offset);
+  },
+
+  petDragEnd(): void {
+    ipcRenderer.send('pet-drag-end');
+  },
+
   onAgentMessage(
     callback: (msg: Record<string, unknown>) => void
   ): () => void {
-    const listener = (event: MessageEvent) => {
-      callback(event.data as Record<string, unknown>);
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      msg: Record<string, unknown>
+    ) => {
+      callback(msg);
     };
-
-    // Listen for the MessagePort transfer from main process
-    ipcRenderer.on(AGENT_MESSAGE_PORT, (_event: Electron.IpcRendererEvent) => {
-      const ports = (_event as unknown as MessageEvent).ports;
-      if (ports && ports.length > 0) {
-        agentPort = ports[0];
-        agentPort.onmessage = listener;
-        agentPort.start();
-      }
-    });
-
-    // Return unsubscribe function
+    ipcRenderer.on('agent-message', listener);
     return () => {
-      if (agentPort) {
-        agentPort.close();
-        agentPort = null;
-      }
+      ipcRenderer.removeListener('agent-message', listener);
     };
   },
 
   sendToAgent(msg: Record<string, unknown>): void {
-    if (agentPort) {
-      agentPort.postMessage(msg);
-    }
+    ipcRenderer.send('renderer-to-agent', msg);
   },
 };
 
