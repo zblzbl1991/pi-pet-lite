@@ -45,3 +45,36 @@ Implemented complete Clawd Desktop Pet Agent: Electron three-process architectur
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Quick input bubble + right-click chat interaction
+
+**Date**: 2026-05-16
+**Task**: Quick input bubble + right-click chat interaction
+**Branch**: `master`
+
+### Summary
+
+Added left-click quick input bubble (320x48 transparent BrowserWindow above pet) for fast command input, right-click opens full chat window. Includes new quick-input renderer, preload, IPC handlers, and updated pet interaction logic.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8226fb6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
