@@ -11,6 +11,7 @@ import type {
   NotificationConfig,
   PetElectronAPI,
   ChatElectronAPI,
+  QuickInputElectronAPI,
 } from '../shared/types';
 
 /**
@@ -27,7 +28,7 @@ export interface SettingsElectronAPI {
 
 declare global {
   interface Window {
-    electronAPI: PetElectronAPI | ChatElectronAPI;
+    electronAPI: PetElectronAPI | ChatElectronAPI | QuickInputElectronAPI;
     settingsAPI: SettingsElectronAPI;
   }
 }

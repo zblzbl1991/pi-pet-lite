@@ -15,6 +15,9 @@ import {
   getSettingsHtmlPath,
   getChatHtmlPath,
   getChatWindow,
+  createQuickInputWindow,
+  closeQuickInputWindow,
+  getQuickInputHtmlPath,
 } from './windows';
 import { createTray } from './tray';
 import {
@@ -22,6 +25,9 @@ import {
   IPC_RENDERER_TO_AGENT,
   IPC_CHAT_SYNC,
   IPC_OPEN_CHAT,
+  IPC_OPEN_QUICK_INPUT,
+  IPC_QUICK_INPUT_SUBMIT,
+  IPC_QUICK_INPUT_CANCEL,
   MESSAGE_BUFFER_MAX,
 } from '../shared/constants';
 import { readConfig, updateLLMConfig, updateNotificationConfig } from '../config/config-store';
@@ -135,6 +141,10 @@ function getChatPreloadPath(): string {
   return path.join(__dirname, '..', 'preload', 'chat-preload.js');
 }
 
+function getQuickInputPreloadPath(): string {
+  return path.join(__dirname, '..', 'preload', 'quick-input-preload.js');
+}
+
 function getAgentEntryPath(): string {
   return path.join(__dirname, '..', 'agent', 'agent-process.js');
 }
@@ -168,6 +178,42 @@ function computeChatPosition(
   cy = Math.max(wa.y, Math.min(cy, wa.y + wa.height - 600));
 
   return { x: Math.round(cx), y: Math.round(cy) };
+}
+
+/**
+ * Compute quick input window position above the pet.
+ * Centers the 320px-wide bubble horizontally above the pet.
+ * Clamps to screen edges.
+ */
+function computeQuickInputPosition(
+  petX: number,
+  petY: number,
+  petWidth: number,
+  petHeight: number
+): { x: number; y: number } {
+  const display = screen.getDisplayNearestPoint({
+    x: petX + petWidth / 2,
+    y: petY + petHeight / 2,
+  });
+  const wa = display.workArea;
+
+  const qiw = 320;
+  const qih = 48;
+  const gap = 8;
+
+  // Center horizontally above pet
+  let qx = petX + petWidth / 2 - qiw / 2;
+  let qy = petY - qih - gap;
+
+  // Clamp horizontally to work area
+  qx = Math.max(wa.x, Math.min(qx, wa.x + wa.width - qiw));
+
+  // If goes above screen top, place below pet instead
+  if (qy < wa.y) {
+    qy = petY + petHeight + gap;
+  }
+
+  return { x: Math.round(qx), y: Math.round(qy) };
 }
 
 function bootstrap(): void {
@@ -305,6 +351,50 @@ function bootstrap(): void {
       }
 
       createChatWindow(chatHtmlPath, chatPreloadPath, position);
+    });
+
+    // ---- Open quick input bubble ----
+    ipcMain.on(IPC_OPEN_QUICK_INPUT, () => {
+      if (!petWindow || petWindow.isDestroyed()) return;
+
+      const [px, py] = petWindow.getPosition();
+      const position = computeQuickInputPosition(px, py, 160, 160);
+      const qiHtmlPath = getQuickInputHtmlPath();
+      const qiPreloadPath = getQuickInputPreloadPath();
+
+      createQuickInputWindow(qiHtmlPath, qiPreloadPath, position);
+    });
+
+    // ---- Quick input submit ----
+    ipcMain.on(
+      IPC_QUICK_INPUT_SUBMIT,
+      (_event: Electron.IpcMainEvent, text: string) => {
+        if (!text.trim()) return;
+
+        // Create user message, add to buffer, broadcast
+        const userMsg: ChatMessage = {
+          id: `user-${Date.now()}`,
+          role: MessageRole.USER,
+          content: text,
+          timestamp: Date.now(),
+        };
+        addToBuffer(userMsg);
+        broadcastToWindows({
+          type: 'chat-message',
+          message: userMsg,
+        });
+
+        // Forward to agent via MessagePort
+        mainPort.postMessage({ type: 'user-input', text });
+
+        // Close the quick input window
+        closeQuickInputWindow();
+      }
+    );
+
+    // ---- Quick input cancel ----
+    ipcMain.on(IPC_QUICK_INPUT_CANCEL, () => {
+      closeQuickInputWindow();
     });
 
     // Handle IPC from renderer for window control

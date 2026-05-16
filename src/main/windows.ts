@@ -1,6 +1,11 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'path';
-import { CHAT_WINDOW_WIDTH, CHAT_WINDOW_HEIGHT } from '../shared/constants';
+import {
+  CHAT_WINDOW_WIDTH,
+  CHAT_WINDOW_HEIGHT,
+  QUICK_INPUT_WIDTH,
+  QUICK_INPUT_HEIGHT,
+} from '../shared/constants';
 
 /**
  * Create the pet BrowserWindow as a small, transparent, always-on-top window.
@@ -177,4 +182,95 @@ export function getChatWindow(): BrowserWindow | null {
  */
 export function getChatHtmlPath(): string {
   return path.join(__dirname, '..', 'renderer', 'chat', 'index.html');
+}
+
+/** Track the quick input window */
+let quickInputWindow: BrowserWindow | null = null;
+
+/**
+ * Create the quick input BrowserWindow as a small transparent bubble.
+ * Positioned above the pet. Auto-closes on blur after 200ms delay.
+ */
+export function createQuickInputWindow(
+  htmlPath: string,
+  preloadPath: string,
+  position: { x: number; y: number }
+): BrowserWindow {
+  // If already open, destroy and recreate (fresh state each time)
+  if (quickInputWindow && !quickInputWindow.isDestroyed()) {
+    quickInputWindow.destroy();
+    quickInputWindow = null;
+  }
+
+  quickInputWindow = new BrowserWindow({
+    width: QUICK_INPUT_WIDTH,
+    height: QUICK_INPUT_HEIGHT,
+    x: position.x,
+    y: position.y,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: true,
+    thickFrame: false,
+    title: '',
+    show: false,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  quickInputWindow.setAlwaysOnTop(true, 'floating');
+
+  quickInputWindow.loadFile(htmlPath);
+
+  quickInputWindow.once('ready-to-show', () => {
+    quickInputWindow?.show();
+    quickInputWindow?.focus();
+  });
+
+  // Close on blur after 200ms delay (unless submit already happened)
+  quickInputWindow.on('blur', () => {
+    setTimeout(() => {
+      if (quickInputWindow && !quickInputWindow.isDestroyed()) {
+        quickInputWindow.close();
+      }
+    }, 200);
+  });
+
+  quickInputWindow.on('closed', () => {
+    quickInputWindow = null;
+  });
+
+  return quickInputWindow;
+}
+
+/**
+ * Get the current quick input window (may be null if closed).
+ */
+export function getQuickInputWindow(): BrowserWindow | null {
+  return quickInputWindow && !quickInputWindow.isDestroyed()
+    ? quickInputWindow
+    : null;
+}
+
+/**
+ * Close the quick input window if it exists.
+ */
+export function closeQuickInputWindow(): void {
+  if (quickInputWindow && !quickInputWindow.isDestroyed()) {
+    quickInputWindow.close();
+  }
+}
+
+/**
+ * Resolve the path to the quick input renderer HTML.
+ */
+export function getQuickInputHtmlPath(): string {
+  return path.join(__dirname, '..', 'renderer', 'quick-input', 'index.html');
 }

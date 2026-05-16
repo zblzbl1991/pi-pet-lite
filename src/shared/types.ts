@@ -103,10 +103,17 @@ export interface PetElectronAPI {
   getWindowPosition: () => Promise<{ x: number; y: number }>;
   openSettings: () => void;
   openChat: () => void;
+  openQuickInput: () => void;
   onAgentMessage: (callback: (msg: AgentToRendererMessage) => void) => () => void;
   sendToAgent: (msg: RendererToAgentMessage) => void;
   petDragStart: (offset: { x: number; y: number }) => void;
   petDragEnd: () => void;
+}
+
+/** Exposed via contextBridge in quick-input preload */
+export interface QuickInputElectronAPI {
+  submit: (text: string) => void;
+  cancel: () => void;
 }
 
 /** Exposed via contextBridge in chat preload */

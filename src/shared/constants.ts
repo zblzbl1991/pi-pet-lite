@@ -66,5 +66,14 @@ export const IPC_OPEN_CHAT = 'open-chat';
 export const CHAT_WINDOW_WIDTH = 400;
 export const CHAT_WINDOW_HEIGHT = 600;
 
+/** Quick input bubble dimensions */
+export const QUICK_INPUT_WIDTH = 320;
+export const QUICK_INPUT_HEIGHT = 48;
+
+/** IPC channels for quick input */
+export const IPC_OPEN_QUICK_INPUT = 'open-quick-input';
+export const IPC_QUICK_INPUT_SUBMIT = 'quick-input-submit';
+export const IPC_QUICK_INPUT_CANCEL = 'quick-input-cancel';
+
 /** Maximum messages kept in main-process ring buffer */
 export const MESSAGE_BUFFER_MAX = 200;

@@ -67,12 +67,23 @@ export const PetWindow: React.FC = () => {
     }
   }, [api]);
 
-  // Handle pet click - open chat window
+  // Handle pet click - open quick input bubble
   const handlePetClick = useCallback(() => {
     if (!isDraggingRef.current) {
-      api?.openChat?.();
+      api?.openQuickInput?.();
     }
   }, [api]);
+
+  // Handle right-click pet - open chat window
+  const handlePetContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (!isDraggingRef.current) {
+        api?.openChat?.();
+      }
+    },
+    [api]
+  );
 
   // ---- Pointer-based drag — ONLY on pet area ----
 
@@ -167,6 +178,7 @@ export const PetWindow: React.FC = () => {
       <div
         ref={petAreaRef}
         onClick={handlePetClick}
+        onContextMenu={handlePetContextMenu}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

@@ -29,6 +29,10 @@ const api = {
     ipcRenderer.send('open-chat');
   },
 
+  openQuickInput(): void {
+    ipcRenderer.send('open-quick-input');
+  },
+
   petDragStart(offset: { x: number; y: number }): void {
     ipcRenderer.send('pet-drag-start', offset);
   },
