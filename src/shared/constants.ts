@@ -62,9 +62,8 @@ export const IPC_RENDERER_TO_AGENT = 'renderer-to-agent';
 export const IPC_CHAT_SYNC = 'chat:sync-history';
 export const IPC_OPEN_CHAT = 'open-chat';
 
-/** Chat window dimensions */
+/** Chat sidebar width (height = screen work area) */
 export const CHAT_WINDOW_WIDTH = 400;
-export const CHAT_WINDOW_HEIGHT = 600;
 
 /** Quick input bubble dimensions */
 export const QUICK_INPUT_WIDTH = 320;
@@ -74,6 +73,11 @@ export const QUICK_INPUT_HEIGHT = 48;
 export const IPC_OPEN_QUICK_INPUT = 'open-quick-input';
 export const IPC_QUICK_INPUT_SUBMIT = 'quick-input-submit';
 export const IPC_QUICK_INPUT_CANCEL = 'quick-input-cancel';
+
+/** IPC channels for chat sidebar slide animation */
+export const IPC_CHAT_SLIDE_IN = 'chat:slide-in';
+export const IPC_CHAT_SLIDE_OUT = 'chat:slide-out';
+export const IPC_CHAT_SLIDE_OUT_COMPLETE = 'chat:slide-out-complete';
 
 /** Maximum messages kept in main-process ring buffer */
 export const MESSAGE_BUFFER_MAX = 200;

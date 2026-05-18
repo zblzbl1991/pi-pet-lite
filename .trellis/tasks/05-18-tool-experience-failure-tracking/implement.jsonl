@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Tool experience tracker needs consistent error categorization matching project error handling patterns"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "JSONL recording should follow project logging conventions for consistency"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "New experience.ts file must follow established agent/ directory conventions"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Implementation quality bar for the new module"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Ensure experience module is designed for reuse when migrating to SQLite in M3"}
