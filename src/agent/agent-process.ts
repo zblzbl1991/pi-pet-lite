@@ -10,6 +10,7 @@
 
 import { MessagePortMain } from 'electron';
 import { AgentState, AgentToRendererMessage, RendererToAgentMessage, MessageRole } from '../shared/types';
+import type { ChatEntry } from '../shared/types';
 import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
 
 let agentPort: MessagePortMain | null = null;
@@ -45,11 +46,10 @@ function handleAgentEvent(event: Parameters<AgentEventCallback>[0]): void {
         type: 'chat-message',
         message: {
           id: event.chatMessage!.id,
-          role: event.chatMessage!.role === 'assistant' ? MessageRole.ASSISTANT : MessageRole.TOOL,
+          role: event.chatMessage!.role === 'assistant' ? MessageRole.ASSISTANT : MessageRole.USER,
           content: event.chatMessage!.content,
           timestamp: Date.now(),
           streaming: event.chatMessage!.streaming,
-          isError: event.chatMessage!.isError,
         },
       });
       break;
@@ -69,6 +69,22 @@ function handleAgentEvent(event: Parameters<AgentEventCallback>[0]): void {
       });
       break;
 
+    case 'chat-thinking':
+      sendToRenderer({
+        type: 'chat-thinking',
+        id: event.chatThinking!.id,
+        delta: event.chatThinking!.delta,
+      });
+      break;
+
+    case 'turn-indicator':
+      sendToRenderer({
+        type: 'turn-indicator',
+        turn: event.turnIndicator!.turn,
+        event: event.turnIndicator!.event,
+      });
+      break;
+
     case 'confirmation-request':
       sendToRenderer({
         type: 'confirmation-request',
@@ -84,7 +100,10 @@ function handleAgentEvent(event: Parameters<AgentEventCallback>[0]): void {
         toolCallId: event.toolExecution!.toolCallId,
         toolName: event.toolExecution!.toolName,
         status: event.toolExecution!.status as 'running' | 'done' | 'error',
+        args: event.toolExecution!.args,
+        partialResult: event.toolExecution!.partialResult,
         result: event.toolExecution!.result,
+        duration: event.toolExecution!.duration,
       });
       break;
 

@@ -16,9 +16,10 @@
  * module's types.
  */
 
-import { AgentState, TrustLevel } from '../shared/types';
+import { AgentState, TrustLevel, ThinkingLevel } from '../shared/types';
 import { TRUST_POLICY } from '../shared/constants';
 import { createModel } from './llm';
+import { getLLMConfig } from './llm';
 import { getAllTools, restoreSchedules, setScheduleFireCallback } from './tools/registry';
 
 /** Type aliases for pi-agent-core types (resolved at runtime via dynamic import) */
@@ -61,11 +62,13 @@ export interface AgentEventCallback {
   (event: {
     type: string;
     state?: AgentState;
-    chatMessage?: { id: string; role: string; content: string; streaming?: boolean; isError?: boolean };
+    chatMessage?: { id: string; role: string; content: string; streaming?: boolean };
     chatDelta?: { id: string; delta: string };
     chatEnd?: { id: string };
+    chatThinking?: { id: string; delta: string };
     confirmationRequest?: { toolCallId: string; toolName: string; args: Record<string, unknown> };
-    toolExecution?: { toolCallId: string; toolName: string; status: string; result?: string };
+    toolExecution?: { toolCallId: string; toolName: string; status: string; args?: Record<string, unknown>; partialResult?: string; result?: string; duration?: number };
+    turnIndicator?: { turn: number; event: 'start' | 'end' };
     error?: string;
   }): void;
 }
@@ -133,6 +136,10 @@ export async function createAgentRuntime(
   // Create the LLM model from config
   const { model, apiKey } = await createModel();
 
+  // Read thinkingLevel from config
+  const llmConfig = getLLMConfig();
+  const thinkingLevel = (llmConfig.thinkingLevel || 'off') as PiThinkingLevel;
+
   // Build tools from the centralized registry
   // getAllTools() is async because it dynamically imports pi-coding-agent (ESM-only)
   const tools = await getAllTools();
@@ -152,14 +159,17 @@ If you need clarification, ask the user. Always explain what you're doing.`;
 
   // Track streaming message IDs for the renderer
   let currentAssistantMessageId: string | null = null;
+  let currentThinkingId: string | null = null;
   let messageCounter = 0;
+  let turnCounter = 0;
+  const toolStartTimes = new Map<string, number>();
 
   // Create the Agent
   const agent = new core.Agent({
     initialState: {
       systemPrompt,
       model,
-      thinkingLevel: 'off' as PiThinkingLevel,
+      thinkingLevel,
       tools,
       messages: [],
     },
@@ -238,6 +248,18 @@ If you need clarification, ask the user. Always explain what you're doing.`;
                 delta: (ame as Extract<PiAssistantMessageEvent, { type: 'text_delta' }>).delta,
               },
             });
+          } else if (ame.type === 'thinking_delta' && 'delta' in ame) {
+            // Forward thinking delta
+            if (!currentThinkingId) {
+              currentThinkingId = currentAssistantMessageId;
+            }
+            onEvent({
+              type: 'chat-thinking',
+              chatThinking: {
+                id: currentThinkingId,
+                delta: (ame as { type: 'thinking_delta'; delta: string }).delta,
+              },
+            });
           }
         }
         break;
@@ -263,29 +285,22 @@ If you need clarification, ask the user. Always explain what you're doing.`;
             });
           }
           currentAssistantMessageId = null;
-        } else if (msg.role === 'toolResult') {
-          const toolMsg = msg as PiToolResultMessage;
-          const resultText = getToolResultText(toolMsg.content);
-          onEvent({
-            type: 'chat-message',
-            chatMessage: {
-              id: `tool-${++messageCounter}-${Date.now()}`,
-              role: 'tool',
-              content: resultText,
-              isError: toolMsg.isError,
-            },
-          });
+          currentThinkingId = null;
         }
+        // Tool result messages are no longer forwarded as chat messages;
+        // they appear in the ToolCardEntry via tool_execution_end instead.
         break;
       }
 
       case 'tool_execution_start':
+        toolStartTimes.set(event.toolCallId, Date.now());
         onEvent({
           type: 'tool-execution',
           toolExecution: {
             toolCallId: event.toolCallId,
             toolName: event.toolName,
             status: 'running',
+            args: event.args as Record<string, unknown>,
           },
         });
         break;
@@ -297,6 +312,9 @@ If you need clarification, ask the user. Always explain what you're doing.`;
           ?.filter((c): c is Extract<typeof c, { type: 'text' }> => c.type === 'text')
           ?.map((c) => c.text)
           ?.join('') ?? '';
+        const startTime = toolStartTimes.get(event.toolCallId);
+        const duration = startTime ? Date.now() - startTime : undefined;
+        toolStartTimes.delete(event.toolCallId);
         onEvent({
           type: 'tool-execution',
           toolExecution: {
@@ -304,6 +322,22 @@ If you need clarification, ask the user. Always explain what you're doing.`;
             toolName: event.toolName,
             status: event.isError ? 'error' : 'done',
             result: resultText,
+            duration,
+          },
+        });
+        break;
+      }
+
+      case 'tool_execution_update': {
+        // Forward partial result updates
+        const partial = (event as { partialResult?: unknown }).partialResult;
+        onEvent({
+          type: 'tool-execution',
+          toolExecution: {
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            status: 'running',
+            partialResult: typeof partial === 'string' ? partial : JSON.stringify(partial),
           },
         });
         break;
@@ -335,8 +369,22 @@ If you need clarification, ask the user. Always explain what you're doing.`;
         break;
       }
 
+      case 'turn_start':
+        turnCounter++;
+        onEvent({
+          type: 'turn-indicator',
+          turnIndicator: { turn: turnCounter, event: 'start' },
+        });
+        break;
+
+      case 'turn_end':
+        onEvent({
+          type: 'turn-indicator',
+          turnIndicator: { turn: turnCounter, event: 'end' },
+        });
+        break;
+
       default:
-        // turn_start, turn_end, tool_execution_update - no specific renderer action
         break;
     }
   });

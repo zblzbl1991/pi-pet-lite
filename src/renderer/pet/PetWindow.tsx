@@ -39,6 +39,8 @@ export const PetWindow: React.FC = () => {
           case 'pong':
           case 'confirmation-request':
           case 'tool-execution':
+          case 'chat-thinking':
+          case 'turn-indicator':
           case 'error':
             // These are handled by the ChatWindow; pet only tracks state
             break;

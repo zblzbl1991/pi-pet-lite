@@ -24,7 +24,6 @@ export type AgentState = (typeof AgentState)[keyof typeof AgentState];
 export const MessageRole = {
   USER: 'user',
   ASSISTANT: 'assistant',
-  TOOL: 'tool',
 } as const;
 
 export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];
@@ -37,8 +36,41 @@ export interface ChatMessage {
   timestamp: number;
   /** For streaming: true while the message is still being generated */
   streaming?: boolean;
-  /** For tool result messages: whether the tool execution was an error */
-  isError?: boolean;
+  /** Thinking content from the assistant, displayed as light italic block */
+  thinking?: string;
+}
+
+/** A tool execution card entry */
+export interface ToolCardEntry {
+  type: 'tool-card';
+  id: string;
+  toolCallId: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  toolResult?: string;
+  toolStatus: 'running' | 'done' | 'error';
+  timestamp: number;
+  duration?: number;
+}
+
+/** A turn indicator entry */
+export interface TurnIndicatorEntry {
+  type: 'turn-indicator';
+  id: string;
+  turn: number;
+}
+
+/** Union type for all chat entries */
+export type ChatEntry = ChatMessage | ToolCardEntry | TurnIndicatorEntry;
+
+/** Type guard to check if a ChatEntry is a ToolCardEntry */
+export function isToolCardEntry(entry: ChatEntry): entry is ToolCardEntry {
+  return 'type' in entry && entry.type === 'tool-card';
+}
+
+/** Type guard to check if a ChatEntry is a TurnIndicatorEntry */
+export function isTurnIndicatorEntry(entry: ChatEntry): entry is TurnIndicatorEntry {
+  return 'type' in entry && entry.type === 'turn-indicator';
 }
 
 /** Trust level for tool execution confirmation */
@@ -50,12 +82,23 @@ export const TrustLevel = {
 
 export type TrustLevel = (typeof TrustLevel)[keyof typeof TrustLevel];
 
+/** Thinking level for agent reasoning */
+export const ThinkingLevel = {
+  OFF: 'off',
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+} as const;
+
+export type ThinkingLevel = (typeof ThinkingLevel)[keyof typeof ThinkingLevel];
+
 /** LLM configuration stored in config file */
 export interface LLMConfig {
   provider: string;
   apiKey: string;
   model: string;
   baseUrl?: string;
+  thinkingLevel?: ThinkingLevel;
 }
 
 /** Notification method configuration */
@@ -85,7 +128,9 @@ export type AgentToRendererMessage =
   | { type: 'chat-message-end'; id: string }
   | { type: 'pong' }
   | { type: 'confirmation-request'; toolCallId: string; toolName: string; args: Record<string, unknown> }
-  | { type: 'tool-execution'; toolCallId: string; toolName: string; status: 'running' | 'done' | 'error'; result?: string }
+  | { type: 'tool-execution'; toolCallId: string; toolName: string; status: 'running' | 'done' | 'error'; args?: Record<string, unknown>; partialResult?: string; result?: string; duration?: number }
+  | { type: 'chat-thinking'; id: string; delta: string }
+  | { type: 'turn-indicator'; turn: number; event: 'start' | 'end' }
   | { type: 'error'; message: string };
 
 /** IPC channels between main process and renderer */
@@ -120,5 +165,9 @@ export interface QuickInputElectronAPI {
 export interface ChatElectronAPI {
   onAgentMessage: (callback: (msg: AgentToRendererMessage) => void) => () => void;
   sendToAgent: (msg: RendererToAgentMessage) => void;
-  syncHistory: () => Promise<ChatMessage[]>;
+  syncHistory: () => Promise<ChatEntry[]>;
+  onSlideIn: (callback: () => void) => () => void;
+  onSlideOut: (callback: () => void) => () => void;
+  slideOutComplete: () => void;
+  closeChat: () => void;
 }

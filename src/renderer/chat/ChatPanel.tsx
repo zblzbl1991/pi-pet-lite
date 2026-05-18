@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ChatMessage,
+  ChatEntry,
+  ToolCardEntry,
+  TurnIndicatorEntry,
+  isToolCardEntry,
+  isTurnIndicatorEntry,
   MessageRole,
   AgentToRendererMessage,
 } from '../../shared/types';
@@ -12,29 +17,133 @@ interface ConfirmationRequest {
   args: Record<string, unknown>;
 }
 
-interface ToolStatus {
-  toolName: string;
-  status: 'running' | 'done' | 'error';
-  result?: string;
+/** Per-card collapse state */
+interface CardCollapseState {
+  collapsed: boolean;
+  manualOverride: boolean;
+}
+
+/** Generate a summary string for a tool card based on tool name and result */
+function getToolSummary(toolName: string, _args: Record<string, unknown>, result: string): string {
+  const name = toolName.toLowerCase();
+  if (name === 'glob' || name === 'find') {
+    if (!result) return 'Searching...';
+    const lines = result.trim().split('\n').filter((l) => l.trim());
+    return lines.length === 0 ? 'No files found' : `${lines.length} file${lines.length !== 1 ? 's' : ''} found`;
+  }
+  if (name === 'grep') {
+    if (!result) return 'Searching...';
+    const lines = result.trim().split('\n').filter((l) => l.trim());
+    return `${lines.length} match${lines.length !== 1 ? 'es' : ''}`;
+  }
+  if (name === 'read') {
+    const filePath = _args?.file_path || _args?.path || '';
+    if (typeof filePath === 'string' && filePath) {
+      const filename = filePath.split('/').pop() || filePath;
+      return `Read ${filename}`;
+    }
+    return 'Read file';
+  }
+  if (name === 'edit') {
+    const filePath = _args?.file_path || _args?.path || '';
+    if (typeof filePath === 'string' && filePath) {
+      const filename = filePath.split('/').pop() || filePath;
+      return `Edited ${filename}`;
+    }
+    return 'Edited file';
+  }
+  if (name === 'write') {
+    const filePath = _args?.file_path || _args?.path || '';
+    if (typeof filePath === 'string' && filePath) {
+      const filename = filePath.split('/').pop() || filePath;
+      return `Wrote ${filename}`;
+    }
+    return 'Wrote file';
+  }
+  if (name === 'bash') {
+    if (!result) return 'Running command...';
+    return 'Command executed';
+  }
+  // Generic fallback: first line truncated
+  if (!result) return `${toolName} running...`;
+  const firstLine = result.split('\n')[0];
+  return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
 }
 
 export const ChatPanel: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [inputText, setInputText] = useState('');
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
-  const [toolStatuses, setToolStatuses] = useState<Map<string, ToolStatus>>(new Map());
+  const [slidIn, setSlidIn] = useState(false);
+  const [cardStates, setCardStates] = useState<Map<string, CardCollapseState>>(new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const collapseTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const api = window.electronAPI as ChatElectronAPI;
 
   // Sync history on mount
   useEffect(() => {
-    api.syncHistory().then((raw: ChatMessage[]) => {
-      if (raw) setMessages(raw);
+    api.syncHistory().then((raw: ChatEntry[]) => {
+      if (raw) {
+        setEntries(raw);
+        // Initialize card states from history
+        const states = new Map<string, CardCollapseState>();
+        for (const entry of raw) {
+          if (isToolCardEntry(entry)) {
+            states.set(entry.toolCallId, {
+              collapsed: entry.toolStatus === 'done',
+              manualOverride: false,
+            });
+          }
+        }
+        setCardStates(states);
+      }
     });
   }, [api]);
+
+  // Listen for slide-in / slide-out from main process
+  useEffect(() => {
+    const unsubSlideIn = api.onSlideIn(() => setSlidIn(true));
+    const unsubSlideOut = api.onSlideOut(() => {
+      setSlidIn(false);
+      setTimeout(() => api.slideOutComplete(), 260);
+    });
+    return () => {
+      unsubSlideIn();
+      unsubSlideOut();
+    };
+  }, [api]);
+
+  // Cleanup collapse timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of collapseTimers.current.values()) {
+        clearTimeout(timer);
+      }
+    };
+  }, []);
+
+  // Schedule auto-collapse for a tool card
+  const scheduleAutoCollapse = useCallback((toolCallId: string) => {
+    // Clear any existing timer
+    const existing = collapseTimers.current.get(toolCallId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      setCardStates((prev) => {
+        const state = prev.get(toolCallId);
+        if (state && !state.manualOverride) {
+          const next = new Map(prev);
+          next.set(toolCallId, { ...state, collapsed: true });
+          return next;
+        }
+        return prev;
+      });
+    }, 1500);
+    collapseTimers.current.set(toolCallId, timer);
+  }, []);
 
   // Listen for agent messages
   useEffect(() => {
@@ -42,27 +151,51 @@ export const ChatPanel: React.FC = () => {
       (msg: AgentToRendererMessage) => {
         switch (msg.type) {
           case 'chat-message':
-            setMessages((prev) => [...prev, msg.message]);
+            setEntries((prev) => [...prev, msg.message]);
             if (msg.message.streaming) setStreamingId(msg.message.id);
             break;
 
           case 'chat-message-update':
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === msg.id
-                  ? { ...m, content: m.content + msg.delta }
-                  : m
+            setEntries((prev) =>
+              prev.map((e) =>
+                'role' in e && e.id === msg.id
+                  ? { ...e, content: e.content + msg.delta }
+                  : e
               )
             );
             break;
 
           case 'chat-message-end':
             setStreamingId((prev) => (prev === msg.id ? null : prev));
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === msg.id ? { ...m, streaming: false } : m
+            setEntries((prev) =>
+              prev.map((e) =>
+                'role' in e && e.id === msg.id ? { ...e, streaming: false } : e
               )
             );
+            break;
+
+          case 'chat-thinking':
+            setEntries((prev) =>
+              prev.map((e) => {
+                if (!('role' in e)) return e;
+                if (e.id === msg.id) {
+                  return { ...e, thinking: (e.thinking || '') + msg.delta };
+                }
+                return e;
+              })
+            );
+            break;
+
+          case 'turn-indicator':
+            // We render turn indicators inline by storing them in entries
+            if (msg.event === 'start') {
+              const ti: TurnIndicatorEntry = {
+                type: 'turn-indicator',
+                id: `turn-${msg.turn}`,
+                turn: msg.turn,
+              };
+              setEntries((prev) => [...prev, ti]);
+            }
             break;
 
           case 'confirmation-request':
@@ -75,37 +208,62 @@ export const ChatPanel: React.FC = () => {
 
           case 'tool-execution': {
             const key = msg.toolCallId;
-            setToolStatuses((prev) => {
-              const next = new Map(prev);
-              next.set(key, {
+            if (msg.status === 'running' && msg.args) {
+              // New tool card
+              const toolCard: ToolCardEntry = {
+                type: 'tool-card',
+                id: `tc-${key}`,
+                toolCallId: key,
                 toolName: msg.toolName,
-                status: msg.status,
-                result: msg.result,
+                toolArgs: msg.args,
+                toolStatus: 'running',
+                timestamp: Date.now(),
+              };
+              setEntries((prev) => [...prev, toolCard]);
+              setCardStates((prev) => {
+                const next = new Map(prev);
+                next.set(key, { collapsed: false, manualOverride: false });
+                return next;
               });
-              return next;
-            });
-            // Auto-clear completed tool status after 3s
-            if (msg.status === 'done' || msg.status === 'error') {
-              setTimeout(() => {
-                setToolStatuses((prev) => {
-                  const next = new Map(prev);
-                  next.delete(key);
-                  return next;
-                });
-              }, 3000);
+            } else {
+              // Update existing tool card
+              setEntries((prev) =>
+                prev.map((e) => {
+                  if (isToolCardEntry(e) && e.toolCallId === key) {
+                    const updated: ToolCardEntry = {
+                      ...e,
+                      toolStatus: msg.status as 'running' | 'done' | 'error',
+                    };
+                    if (msg.result !== undefined) {
+                      updated.toolResult = msg.result;
+                    } else if (msg.partialResult !== undefined) {
+                      updated.toolResult = (e.toolResult || '') + msg.partialResult;
+                    }
+                    if (msg.duration !== undefined) {
+                      updated.duration = msg.duration;
+                    }
+                    return updated;
+                  }
+                  return e;
+                })
+              );
+              // Schedule auto-collapse for done, not for error
+              if (msg.status === 'done') {
+                scheduleAutoCollapse(key);
+              }
             }
             break;
           }
 
           case 'error':
-            setMessages((prev) => [
+            setEntries((prev) => [
               ...prev,
               {
                 id: `error-${Date.now()}`,
                 role: MessageRole.ASSISTANT,
                 content: `[Error] ${msg.message}`,
                 timestamp: Date.now(),
-              },
+              } as ChatMessage,
             ]);
             break;
         }
@@ -115,12 +273,12 @@ export const ChatPanel: React.FC = () => {
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [api]);
+  }, [api, scheduleAutoCollapse]);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, toolStatuses, confirmation]);
+  }, [entries, confirmation]);
 
   // Auto-focus input
   useEffect(() => {
@@ -158,8 +316,23 @@ export const ChatPanel: React.FC = () => {
     [api]
   );
 
-  // Active tool status entries for display
-  const activeTools = Array.from(toolStatuses.entries());
+  const handleClose = useCallback(() => {
+    api.closeChat();
+  }, [api]);
+
+  const toggleCardCollapse = useCallback((toolCallId: string) => {
+    setCardStates((prev) => {
+      const next = new Map(prev);
+      const current = next.get(toolCallId);
+      if (current) {
+        next.set(toolCallId, {
+          collapsed: !current.collapsed,
+          manualOverride: true,
+        });
+      }
+      return next;
+    });
+  }, []);
 
   /** Render truncated tool args */
   const renderArgsPreview = (args: Record<string, unknown>): string => {
@@ -175,7 +348,10 @@ export const ChatPanel: React.FC = () => {
   };
 
   return (
-    <div style={containerStyle}>
+    <div style={{
+      ...containerStyle,
+      transform: slidIn ? 'translateX(0)' : 'translateX(100%)',
+    }}>
       {/* Header */}
       <div style={headerStyle}>
         <span style={dotStyle} />
@@ -183,52 +359,110 @@ export const ChatPanel: React.FC = () => {
         <span style={{ marginLeft: 'auto', fontSize: 10, color: '#666' }}>
           Desktop AI Assistant
         </span>
+        <button
+          onClick={handleClose}
+          style={closeButtonStyle}
+          title="Close sidebar"
+        >
+          x
+        </button>
       </div>
 
       {/* Messages */}
       <div style={messagesStyle}>
-        {messages.length === 0 && (
+        {entries.length === 0 && (
           <div style={emptyStateStyle}>
             Click the pet to start chatting!
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div key={msg.id} style={bubbleStyle(msg.role)}>
-            {msg.role === MessageRole.TOOL && (
-              <span style={toolLabelStyle}>
-                {msg.isError ? '✗' : '⚡'} tool
-              </span>
-            )}
-            <span>{msg.content}</span>
-            {msg.id === streamingId && <span style={cursorStyle} />}
-          </div>
-        ))}
+        {entries.map((entry) => {
+          // Turn indicator
+          if (isTurnIndicatorEntry(entry)) {
+            return (
+              <div key={entry.id} style={turnSeparatorStyle}>
+                <div style={turnLineStyle} />
+                <span style={turnLabelStyle}>Turn {entry.turn}</span>
+                <div style={turnLineStyle} />
+              </div>
+            );
+          }
 
-        {/* Active tool indicators */}
-        {activeTools.map(([key, ts]) => (
-          <div key={`tool-${key}`} style={toolStatusStyle}>
-            <span
-              style={{
-                ...toolDotStyle,
-                background:
-                  ts.status === 'running'
-                    ? '#f0ad4e'
-                    : ts.status === 'done'
-                      ? '#5cb85c'
-                      : '#d9534f',
-              }}
-            />
-            <span>
-              {ts.status === 'running'
+          // Tool card entry
+          if (isToolCardEntry(entry)) {
+            const cardState = cardStates.get(entry.toolCallId) || { collapsed: false, manualOverride: false };
+            const summary = getToolSummary(entry.toolName, entry.toolArgs, entry.toolResult || '');
+            const statusColor =
+              entry.toolStatus === 'running'
+                ? '#f0ad4e'
+                : entry.toolStatus === 'done'
+                  ? '#5cb85c'
+                  : '#d9534f';
+            const statusLabel =
+              entry.toolStatus === 'running'
                 ? 'Running'
-                : ts.status === 'done'
+                : entry.toolStatus === 'done'
                   ? 'Done'
-                  : 'Error'}
-              : {ts.toolName}
-            </span>
-          </div>
-        ))}
+                  : 'Error';
+
+            return (
+              <div key={entry.id} style={toolCardStyle}>
+                {/* Card header */}
+                <div
+                  style={toolCardHeaderStyle}
+                  onClick={() => toggleCardCollapse(entry.toolCallId)}
+                >
+                  <span style={{ ...toolCardDotStyle, background: statusColor }} />
+                  <span style={toolCardNameStyle}>{entry.toolName}</span>
+                  <span style={toolCardStatusLabel}>{statusLabel}</span>
+                  {entry.duration != null && (
+                    <span style={toolCardDurationStyle}>{(entry.duration / 1000).toFixed(1)}s</span>
+                  )}
+                  {cardState.collapsed && (
+                    <span style={toolCardSummaryStyle}>{summary}</span>
+                  )}
+                  <span style={toolCardChevronStyle}>{cardState.collapsed ? '+' : '-'}</span>
+                </div>
+
+                {/* Expandable content */}
+                {!cardState.collapsed && (
+                  <div style={toolCardContentStyle}>
+                    {/* Args section */}
+                    <div style={toolCardSectionStyle}>
+                      <div style={toolCardSectionLabelStyle}>Arguments</div>
+                      <pre style={toolCardPreStyle}>
+                        {JSON.stringify(entry.toolArgs, null, 2)}
+                      </pre>
+                    </div>
+
+                    {/* Result section */}
+                    {(entry.toolResult || entry.toolStatus === 'running') && (
+                      <div style={toolCardSectionStyle}>
+                        <div style={toolCardSectionLabelStyle}>Result</div>
+                        <div style={toolCardResultStyle}>
+                          {entry.toolResult || 'Waiting...'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // Chat message
+          const msg = entry as ChatMessage;
+          return (
+            <div key={msg.id} style={bubbleStyle(msg.role)}>
+              {/* Thinking block */}
+              {msg.thinking && (
+                <div style={thinkingBlockStyle}>{msg.thinking}</div>
+              )}
+              <span>{msg.content}</span>
+              {msg.id === streamingId && <span style={cursorStyle} />}
+            </div>
+          );
+        })}
 
         {/* Confirmation request */}
         {confirmation && (
@@ -294,6 +528,9 @@ const containerStyle: React.CSSProperties = {
   background: '#1e1f22',
   color: '#e0e0e0',
   fontFamily: "'Segoe UI', -apple-system, sans-serif",
+  borderLeft: '1px solid #444',
+  transform: 'translateX(100%)',
+  transition: 'transform 250ms ease-out',
 };
 
 const headerStyle: React.CSSProperties = {
@@ -303,7 +540,8 @@ const headerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   fontSize: 13,
-};
+  WebkitAppRegion: 'drag',
+} as React.CSSProperties;
 
 const dotStyle: React.CSSProperties = {
   width: 8,
@@ -335,29 +573,30 @@ const bubbleStyle = (role: string): React.CSSProperties => ({
   maxWidth: '85%',
   padding: '8px 12px',
   borderRadius: 12,
-  fontSize: role === MessageRole.TOOL ? 11 : 13,
+  fontSize: 13,
   lineHeight: 1.5,
   alignSelf: role === MessageRole.USER ? 'flex-end' : 'flex-start',
   background:
     role === MessageRole.USER
       ? '#3a6b4f'
-      : role === MessageRole.TOOL
-        ? '#2a2820'
-        : '#2a2c30',
-  border: role === MessageRole.TOOL ? '1px solid #3a3a30' : 'none',
+      : '#2a2c30',
+  border: 'none',
   color: '#e0e0e0',
-  fontFamily: role === MessageRole.TOOL ? 'monospace' : 'inherit',
+  fontFamily: 'inherit',
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
 });
 
-const toolLabelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: 9,
-  color: '#888',
-  marginBottom: 2,
-  textTransform: 'uppercase',
-  letterSpacing: 0.5,
+const thinkingBlockStyle: React.CSSProperties = {
+  fontStyle: 'italic',
+  color: 'rgba(180, 180, 200, 0.5)',
+  fontSize: 12,
+  lineHeight: 1.4,
+  marginBottom: 6,
+  paddingBottom: 6,
+  borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
 };
 
 const cursorStyle: React.CSSProperties = {
@@ -370,24 +609,134 @@ const cursorStyle: React.CSSProperties = {
   animation: 'blink 0.8s ease-in-out infinite',
 };
 
-const toolStatusStyle: React.CSSProperties = {
+// Turn indicator styles
+const turnSeparatorStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '4px 0',
+  alignSelf: 'center',
+  width: '80%',
+};
+
+const turnLineStyle: React.CSSProperties = {
+  flex: 1,
+  height: 1,
+  background: 'rgba(255, 255, 255, 0.1)',
+};
+
+const turnLabelStyle: React.CSSProperties = {
+  fontSize: 10,
+  color: 'rgba(255, 255, 255, 0.3)',
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+  whiteSpace: 'nowrap',
+};
+
+// Tool card styles
+const toolCardStyle: React.CSSProperties = {
   alignSelf: 'flex-start',
-  background: 'rgba(40, 42, 48, 0.9)',
-  color: 'rgba(200, 200, 210, 0.9)',
-  borderRadius: 8,
-  padding: '6px 12px',
-  fontSize: 11,
-  fontFamily: 'monospace',
+  background: 'rgba(40, 42, 48, 0.95)',
+  border: '1px solid rgba(255, 255, 255, 0.08)',
+  borderRadius: 10,
+  maxWidth: '90%',
+  minWidth: 200,
+  overflow: 'hidden',
+};
+
+const toolCardHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
-};
+  padding: '8px 12px',
+  cursor: 'pointer',
+  userSelect: 'none',
+  WebkitAppRegion: 'no-drag',
+} as React.CSSProperties;
 
-const toolDotStyle: React.CSSProperties = {
-  width: 6,
-  height: 6,
+const toolCardDotStyle: React.CSSProperties = {
+  width: 7,
+  height: 7,
   borderRadius: '50%',
   display: 'inline-block',
+  flexShrink: 0,
+};
+
+const toolCardNameStyle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#e0e0e0',
+};
+
+const toolCardStatusLabel: React.CSSProperties = {
+  fontSize: 10,
+  color: 'rgba(200, 200, 210, 0.5)',
+};
+
+const toolCardDurationStyle: React.CSSProperties = {
+  fontSize: 10,
+  color: 'rgba(200, 200, 210, 0.4)',
+};
+
+const toolCardSummaryStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: 'rgba(200, 200, 210, 0.6)',
+  flex: 1,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  marginLeft: 4,
+};
+
+const toolCardChevronStyle: React.CSSProperties = {
+  fontSize: 14,
+  color: 'rgba(200, 200, 210, 0.4)',
+  marginLeft: 'auto',
+  flexShrink: 0,
+};
+
+const toolCardContentStyle: React.CSSProperties = {
+  borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+  padding: '6px 12px 10px',
+};
+
+const toolCardSectionStyle: React.CSSProperties = {
+  marginBottom: 6,
+};
+
+const toolCardSectionLabelStyle: React.CSSProperties = {
+  fontSize: 10,
+  color: 'rgba(200, 200, 210, 0.4)',
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+  marginBottom: 3,
+};
+
+const toolCardPreStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontFamily: 'monospace',
+  color: 'rgba(200, 200, 210, 0.7)',
+  background: 'rgba(0, 0, 0, 0.2)',
+  borderRadius: 6,
+  padding: '6px 8px',
+  margin: 0,
+  maxHeight: 120,
+  overflow: 'auto',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-all',
+};
+
+const toolCardResultStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontFamily: 'monospace',
+  color: 'rgba(200, 200, 210, 0.7)',
+  background: 'rgba(0, 0, 0, 0.2)',
+  borderRadius: 6,
+  padding: '6px 8px',
+  maxHeight: 150,
+  overflow: 'auto',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-all',
 };
 
 const confirmCardStyle: React.CSSProperties = {
@@ -468,3 +817,15 @@ const sendButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   opacity: 1,
 };
+
+const closeButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: '#888',
+  fontSize: 16,
+  cursor: 'pointer',
+  marginLeft: 8,
+  padding: '0 4px',
+  lineHeight: 1,
+  WebkitAppRegion: 'no-drag',
+} as React.CSSProperties;

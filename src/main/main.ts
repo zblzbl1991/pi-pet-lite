@@ -12,6 +12,8 @@ import {
   createPetWindow,
   createSettingsWindow,
   createChatWindow,
+  showChatWindow,
+  forceHideChatWindow,
   getSettingsHtmlPath,
   getChatHtmlPath,
   getChatWindow,
@@ -28,6 +30,7 @@ import {
   IPC_OPEN_QUICK_INPUT,
   IPC_QUICK_INPUT_SUBMIT,
   IPC_QUICK_INPUT_CANCEL,
+  IPC_CHAT_SLIDE_OUT_COMPLETE,
   MESSAGE_BUFFER_MAX,
 } from '../shared/constants';
 import { readConfig, updateLLMConfig, updateNotificationConfig } from '../config/config-store';
@@ -35,6 +38,8 @@ import { MessageRole } from '../shared/types';
 import type {
   LLMConfig,
   ChatMessage,
+  ChatEntry,
+  ToolCardEntry,
   NotificationConfig,
   AgentToRendererMessage,
   RendererToAgentMessage,
@@ -43,10 +48,10 @@ import type {
 let petWindow: BrowserWindow | null = null;
 
 // Message buffer for ChatWindow history sync
-const messageBuffer: ChatMessage[] = [];
+const messageBuffer: ChatEntry[] = [];
 
-function addToBuffer(msg: ChatMessage): void {
-  messageBuffer.push(msg);
+function addToBuffer(entry: ChatEntry): void {
+  messageBuffer.push(entry);
   while (messageBuffer.length > MESSAGE_BUFFER_MAX) {
     messageBuffer.shift();
   }
@@ -54,18 +59,44 @@ function addToBuffer(msg: ChatMessage): void {
 
 function updateBufferStream(id: string, delta: string): void {
   const idx = messageBuffer.findIndex((m) => m.id === id);
-  if (idx >= 0) {
+  if (idx >= 0 && !('type' in messageBuffer[idx])) {
+    const msg = messageBuffer[idx] as ChatMessage;
     messageBuffer[idx] = {
-      ...messageBuffer[idx],
-      content: messageBuffer[idx].content + delta,
+      ...msg,
+      content: msg.content + delta,
     };
   }
 }
 
 function markBufferStreamEnd(id: string): void {
   const idx = messageBuffer.findIndex((m) => m.id === id);
+  if (idx >= 0 && !('type' in messageBuffer[idx])) {
+    const msg = messageBuffer[idx] as ChatMessage;
+    messageBuffer[idx] = { ...msg, streaming: false };
+  }
+}
+
+function updateBufferThinking(id: string, delta: string): void {
+  const idx = messageBuffer.findIndex((m) => m.id === id);
+  if (idx >= 0 && !('type' in messageBuffer[idx])) {
+    const msg = messageBuffer[idx] as ChatMessage;
+    messageBuffer[idx] = {
+      ...msg,
+      thinking: (msg.thinking || '') + delta,
+    };
+  }
+}
+
+function updateBufferToolCard(toolCallId: string, updates: Partial<ToolCardEntry>, appendResult?: string): void {
+  const idx = messageBuffer.findIndex(
+    (e) => 'type' in e && e.type === 'tool-card' && e.toolCallId === toolCallId
+  );
   if (idx >= 0) {
-    messageBuffer[idx] = { ...messageBuffer[idx], streaming: false };
+    const card = messageBuffer[idx] as ToolCardEntry;
+    const newResult = appendResult
+      ? (card.toolResult || '') + appendResult
+      : updates.toolResult;
+    messageBuffer[idx] = { ...card, ...updates, toolResult: newResult };
   }
 }
 
@@ -90,7 +121,7 @@ function sendSystemNotification(state: string): void {
 
     const lastAssistantMsg = [...messageBuffer]
       .reverse()
-      .find((m) => m.role === 'assistant');
+      .find((m) => !('type' in m) && m.role === 'assistant') as ChatMessage | undefined;
 
     const body =
       state === 'success'
@@ -147,37 +178,6 @@ function getQuickInputPreloadPath(): string {
 
 function getAgentEntryPath(): string {
   return path.join(__dirname, '..', 'agent', 'agent-process.js');
-}
-
-/**
- * Compute chat window position near the pet.
- * Places chat to the right of the pet, vertically centered.
- * Falls back to left side if not enough space.
- */
-function computeChatPosition(
-  petX: number,
-  petY: number,
-  petWidth: number,
-  petHeight: number
-): { x: number; y: number } {
-  const display = screen.getDisplayNearestPoint({
-    x: petX + petWidth / 2,
-    y: petY + petHeight / 2,
-  });
-  const wa = display.workArea;
-
-  let cx = petX + petWidth / 2 + 30;
-  let cy = petY + petHeight / 2 - 300;
-
-  // If chat overflows right edge, place on left
-  if (cx + 400 > wa.x + wa.width) {
-    cx = petX + petWidth / 2 - 430;
-  }
-
-  // Clamp vertically
-  cy = Math.max(wa.y, Math.min(cy, wa.y + wa.height - 600));
-
-  return { x: Math.round(cx), y: Math.round(cy) };
 }
 
 /**
@@ -278,6 +278,39 @@ function bootstrap(): void {
         case 'chat-message-end':
           markBufferStreamEnd(msg.id);
           break;
+        case 'chat-thinking':
+          updateBufferThinking(msg.id, msg.delta);
+          break;
+        case 'tool-execution':
+          if (msg.status === 'running' && msg.args) {
+            // New tool card
+            const toolCard: ToolCardEntry = {
+              type: 'tool-card',
+              id: `tc-${msg.toolCallId}`,
+              toolCallId: msg.toolCallId,
+              toolName: msg.toolName,
+              toolArgs: msg.args,
+              toolStatus: 'running',
+              timestamp: Date.now(),
+            };
+            addToBuffer(toolCard);
+          } else if (msg.status === 'running' && msg.partialResult) {
+            // Partial result update - append to existing result
+            updateBufferToolCard(msg.toolCallId, {}, msg.partialResult);
+          } else if (msg.status === 'done') {
+            updateBufferToolCard(msg.toolCallId, {
+              toolStatus: 'done',
+              toolResult: msg.result,
+              duration: msg.duration,
+            });
+          } else if (msg.status === 'error') {
+            updateBufferToolCard(msg.toolCallId, {
+              toolStatus: 'error',
+              toolResult: msg.result,
+              duration: msg.duration,
+            });
+          }
+          break;
       }
 
       // Broadcast to all windows via IPC
@@ -285,19 +318,17 @@ function bootstrap(): void {
 
       // Auto-show ChatWindow for confirmation requests
       if (msg.type === 'confirmation-request') {
-        const chatWin = getChatWindow();
+        let chatWin = getChatWindow();
         if (!chatWin) {
           const chatHtmlPath = getChatHtmlPath();
           const chatPreloadPath = getChatPreloadPath();
-          let position: { x: number; y: number } | undefined;
-          if (petWindow && !petWindow.isDestroyed()) {
-            const [px, py] = petWindow.getPosition();
-            position = computeChatPosition(px, py, 160, 160);
-          }
-          createChatWindow(chatHtmlPath, chatPreloadPath, position);
+          createChatWindow(chatHtmlPath, chatPreloadPath);
+          chatWin = getChatWindow();
+          chatWin?.once('ready-to-show', () => {
+            showChatWindow();
+          });
         } else {
-          chatWin.show();
-          chatWin.focus();
+          showChatWindow();
         }
       }
 
@@ -339,18 +370,33 @@ function bootstrap(): void {
       return [...messageBuffer];
     });
 
-    // ---- Open chat window ----
+    // ---- Open chat sidebar ----
     ipcMain.on(IPC_OPEN_CHAT, () => {
-      const chatHtmlPath = getChatHtmlPath();
-      const chatPreloadPath = getChatPreloadPath();
-
-      let position: { x: number; y: number } | undefined;
-      if (petWindow && !petWindow.isDestroyed()) {
-        const [px, py] = petWindow.getPosition();
-        position = computeChatPosition(px, py, 160, 160);
+      let chatWin = getChatWindow();
+      if (!chatWin) {
+        const chatHtmlPath = getChatHtmlPath();
+        const chatPreloadPath = getChatPreloadPath();
+        createChatWindow(chatHtmlPath, chatPreloadPath);
+        chatWin = getChatWindow();
+        chatWin?.once('ready-to-show', () => {
+          showChatWindow();
+        });
+      } else {
+        showChatWindow();
       }
+    });
 
-      createChatWindow(chatHtmlPath, chatPreloadPath, position);
+    // ---- Chat sidebar slide-out complete → hide window ----
+    ipcMain.on(IPC_CHAT_SLIDE_OUT_COMPLETE, () => {
+      forceHideChatWindow();
+    });
+
+    // ---- Close chat from renderer (X button) → trigger slide-out ----
+    ipcMain.on('close-chat', () => {
+      const chatWin = getChatWindow();
+      if (chatWin) {
+        chatWin.webContents.send('chat:slide-out');
+      }
     });
 
     // ---- Open quick input bubble ----

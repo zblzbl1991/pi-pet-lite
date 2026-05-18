@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { LLMConfig, NotificationConfig } from '../../shared/types';
+import type { LLMConfig, NotificationConfig, ThinkingLevel } from '../../shared/types';
 
 /** Provider option with display label and available models */
 interface ProviderOption {
@@ -81,6 +81,7 @@ export const SettingsWindow: React.FC = () => {
   const [connectionMessage, setConnectionMessage] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('low');
 
   // Notification config state
   const [notifConfig, setNotifConfig] = useState<NotificationConfig>({
@@ -105,6 +106,7 @@ export const SettingsWindow: React.FC = () => {
         const loadedModel = config.model || '';
         setProvider(loadedProvider);
         setApiKey(config.apiKey || '');
+        setThinkingLevel(config.thinkingLevel || 'low');
 
         // Check if the saved model is a predefined option for its provider
         const providerOpt = PROVIDERS.find((p) => p.value === loadedProvider);
@@ -219,6 +221,7 @@ export const SettingsWindow: React.FC = () => {
       provider,
       model: effectiveModel || 'gpt-4o',
       apiKey,
+      thinkingLevel,
     };
 
     try {
@@ -496,6 +499,27 @@ export const SettingsWindow: React.FC = () => {
           >
             {showApiKey ? 'Hide' : 'Show'}
           </button>
+        </div>
+      </div>
+
+      {/* Thinking Level */}
+      <div style={styles.section}>
+        <label style={styles.label}>Thinking Level</label>
+        <select
+          value={thinkingLevel}
+          onChange={(e) => {
+            setThinkingLevel(e.target.value as ThinkingLevel);
+            setSaveMessage('');
+          }}
+          style={styles.select}
+        >
+          <option value="off">Off</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+        <div style={styles.modelInputNote}>
+          Controls how much the agent &quot;thinks&quot; before responding. Higher levels may improve reasoning but increase latency and cost.
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
-import { AppConfig, LLMConfig, NotificationConfig } from '../shared/types';
+import { AppConfig, LLMConfig, NotificationConfig, ThinkingLevel } from '../shared/types';
 import { CONFIG_FILENAME } from '../shared/constants';
 
 /**
@@ -31,6 +31,7 @@ const DEFAULT_CONFIG: AppConfig = {
     provider: 'openai',
     apiKey: '',
     model: 'gpt-4o',
+    thinkingLevel: 'low' as ThinkingLevel,
   },
   notifications: {
     systemToast: true,
