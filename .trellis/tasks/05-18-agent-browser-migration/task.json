@@ -1,0 +1,38 @@
+{
+  "id": "agent-browser-migration",
+  "name": "agent-browser-migration",
+  "title": "Migrate browser automation from Playwright to agent-browser CLI",
+  "description": "Replace Playwright's in-process CDP page operations with agent-browser CLI (Vercel Labs). Retain browser-launch.ts for Chrome discovery and CDP startup.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "src/agent/tools/browser.ts",
+  "package": null,
+  "priority": "P2",
+  "creator": "zbl",
+  "assignee": "zbl",
+  "createdAt": "2026-05-18",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/agent/tools/browser.ts",
+    "src/agent/tools/browser-launch.ts"
+  ],
+  "notes": "",
+  "meta": {
+    "grill_decisions": {
+      "motivation": "Playwright heavy + agent-browser design philosophy better",
+      "core_value": "dynamic ref + accessibility tree, not fixed DOM selectors",
+      "usage_pattern": "exploration-based (agent discovers page, then decides)",
+      "latency_tolerance": "unlimited",
+      "browser_target": "user's own Chrome via CDP",
+      "launch_layer": "keep browser-launch.ts (pure Node.js, no Playwright)",
+      "risk_acceptance": "accept v0.x instability, self-debug"
+    }
+  }
+}

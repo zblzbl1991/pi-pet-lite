@@ -1,0 +1,3 @@
+{"id":"_example","spec":"research/agent-browser-evaluation.md","role":"context","notes":"agent-browser features, CLI API, architecture analysis"}
+{"id":"_example_2","spec":"research/current-cdp-usage.md","role":"context","notes":"current Playwright+CDP integration, files, limitations"}
+{"id":"prd","spec":"prd.md","role":"spec","notes":"full migration PRD with grill decisions and architecture"}
