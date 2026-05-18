@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { LLMConfig, NotificationConfig, ThinkingLevel } from '../../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, ThinkingLevel } from '../../shared/types';
 
 /** Provider option with display label and available models */
 interface ProviderOption {
@@ -64,14 +64,137 @@ const PROVIDERS: ProviderOption[] = [
   {
     value: 'openrouter',
     label: 'OpenRouter',
-    models: [], // User enters model ID manually
+    models: [],
   },
 ];
 
 /** Status of a connection test attempt */
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
-export const SettingsWindow: React.FC = () => {
+/** Sidebar navigation sections */
+type Section = 'llm' | 'browser' | 'notifications';
+
+const sharedStyles: Record<string, React.CSSProperties> = {
+  label: {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 500,
+    color: 'rgba(200, 200, 210, 0.8)',
+    marginBottom: 6,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.5px',
+  },
+  input: {
+    width: '100%',
+    padding: '10px 12px',
+    background: 'rgba(40, 42, 48, 0.9)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 8,
+    color: '#F0F1F2',
+    fontSize: 14,
+    fontFamily: 'inherit',
+    outline: 'none',
+  },
+  select: {
+    width: '100%',
+    padding: '10px 12px',
+    background: 'rgba(40, 42, 48, 0.9)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 8,
+    color: '#F0F1F2',
+    fontSize: 14,
+    fontFamily: 'inherit',
+    outline: 'none',
+    cursor: 'pointer',
+    appearance: 'none' as const,
+    WebkitAppearance: 'none' as const,
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23aaa' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 12px center',
+    paddingRight: 32,
+  },
+  hint: {
+    fontSize: 11,
+    color: 'rgba(200, 200, 210, 0.5)',
+    marginTop: 4,
+  },
+  field: {
+    marginBottom: 16,
+  },
+  btnRow: {
+    display: 'flex',
+    gap: 12,
+    marginTop: 24,
+  },
+  btn: {
+    padding: '10px 24px',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 500,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'opacity 0.15s ease',
+  },
+  btnSave: {
+    background: 'rgba(80, 180, 120, 0.9)',
+    color: '#fff',
+  },
+  btnTest: {
+    background: 'rgba(60, 120, 200, 0.8)',
+    color: '#fff',
+  },
+  statusMsg: {
+    marginTop: 12,
+    fontSize: 13,
+    padding: '8px 12px',
+    borderRadius: 6,
+  },
+  successMsg: {
+    color: '#5cb85c',
+    background: 'rgba(92, 184, 92, 0.1)',
+  },
+  errorMsg: {
+    color: '#d9534f',
+    background: 'rgba(217, 83, 79, 0.1)',
+  },
+  infoMsg: {
+    color: '#f0ad4e',
+    background: 'rgba(240, 173, 78, 0.1)',
+  },
+};
+
+function StatusBlock({ status, message }: { status: ConnectionStatus; message: string }) {
+  if (status === 'idle' || !message) return null;
+  return (
+    <div style={{
+      ...sharedStyles.statusMsg,
+      ...(status === 'success' ? sharedStyles.successMsg
+        : status === 'testing' ? sharedStyles.infoMsg
+        : sharedStyles.errorMsg),
+    }}>
+      {message}
+    </div>
+  );
+}
+
+function SaveStatus({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <div style={{
+      ...sharedStyles.statusMsg,
+      ...(message.includes('Failed') ? sharedStyles.errorMsg : sharedStyles.successMsg),
+    }}>
+      {message}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section components
+// ---------------------------------------------------------------------------
+
+function LLMSection() {
   const [provider, setProvider] = useState('openai');
   const [model, setModel] = useState('gpt-4o');
   const [customModelValue, setCustomModelValue] = useState('');
@@ -83,21 +206,11 @@ export const SettingsWindow: React.FC = () => {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('low');
 
-  // Notification config state
-  const [notifConfig, setNotifConfig] = useState<NotificationConfig>({
-    systemToast: true,
-    petBubble: true,
-    petAnimation: true,
-  });
-  const [notifSaveMessage, setNotifSaveMessage] = useState('');
-
-  /** Whether the current model selection is the "Custom" sentinel */
   const isCustomModel = model === CUSTOM_MODEL_VALUE;
-
-  /** The effective model value to use (custom text or predefined model id) */
   const effectiveModel = isCustomModel ? customModelValue : model;
+  const currentProvider = PROVIDERS.find((p) => p.value === provider);
+  const isFormValid = provider && effectiveModel && apiKey.trim().length > 0;
 
-  // Load current config on mount
   useEffect(() => {
     if (!window.settingsAPI) return;
     window.settingsAPI.loadConfig().then((config) => {
@@ -108,7 +221,6 @@ export const SettingsWindow: React.FC = () => {
         setApiKey(config.apiKey || '');
         setThinkingLevel(config.thinkingLevel || 'low');
 
-        // Check if the saved model is a predefined option for its provider
         const providerOpt = PROVIDERS.find((p) => p.value === loadedProvider);
         const isPredefined = providerOpt
           ? providerOpt.models.some((m) => m.value === loadedModel)
@@ -117,555 +229,343 @@ export const SettingsWindow: React.FC = () => {
         if (providerOpt && providerOpt.models.length > 0 && isPredefined) {
           setModel(loadedModel);
         } else if (providerOpt && providerOpt.models.length > 0 && !isPredefined && loadedModel) {
-          // Saved model is not in the predefined list -- switch to custom mode
           setModel(CUSTOM_MODEL_VALUE);
           setCustomModelValue(loadedModel);
         } else {
-          // Provider has no predefined models (e.g. OpenRouter) -- just use the raw value
           setModel(loadedModel);
         }
       }
       setHasLoaded(true);
-    }).catch(() => {
-      setHasLoaded(true);
-    });
-
-    // Load notification config
-    window.settingsAPI?.loadNotificationConfig?.().then((cfg) => {
-      if (cfg) setNotifConfig(cfg);
-    });
+    }).catch(() => setHasLoaded(true));
   }, []);
-
-  // When provider changes, reset model to the first available for that provider
-  const handleProviderChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const newProvider = e.target.value;
-      setProvider(newProvider);
-      setCustomModelValue('');
-      setConnectionStatus('idle');
-      setConnectionMessage('');
-      setSaveMessage('');
-
-      const providerOpt = PROVIDERS.find((p) => p.value === newProvider);
-      if (providerOpt && providerOpt.models.length > 0) {
-        setModel(providerOpt.models[0].value);
-      } else {
-        setModel('');
-      }
-    },
-    []
-  );
-
-  const handleModelChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
-      setModel(e.target.value);
-      setConnectionStatus('idle');
-      setConnectionMessage('');
-      setSaveMessage('');
-    },
-    []
-  );
-
-  const handleCustomModelChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setCustomModelValue(e.target.value);
-      setConnectionStatus('idle');
-      setConnectionMessage('');
-      setSaveMessage('');
-    },
-    []
-  );
-
-  const handleApiKeyChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setApiKey(e.target.value);
-      setConnectionStatus('idle');
-      setConnectionMessage('');
-      setSaveMessage('');
-    },
-    []
-  );
-
-  const handleTestConnection = useCallback(async () => {
-    if (!window.settingsAPI || !apiKey.trim()) return;
-
-    setConnectionStatus('testing');
-    setConnectionMessage('Testing connection...');
-    setSaveMessage('');
-
-    try {
-      const result = await window.settingsAPI.testConnection({
-        provider,
-        model: effectiveModel || 'gpt-4o',
-        apiKey,
-      });
-      if (result.success) {
-        setConnectionStatus('success');
-        setConnectionMessage('Connection successful!');
-      } else {
-        setConnectionStatus('error');
-        setConnectionMessage(result.error || 'Connection failed');
-      }
-    } catch (err: unknown) {
-      setConnectionStatus('error');
-      setConnectionMessage(
-        err instanceof Error ? err.message : 'Connection test failed'
-      );
-    }
-  }, [provider, effectiveModel, apiKey]);
 
   const handleSave = useCallback(async () => {
     if (!window.settingsAPI) return;
-
-    const config: LLMConfig = {
-      provider,
-      model: effectiveModel || 'gpt-4o',
-      apiKey,
-      thinkingLevel,
-    };
-
     try {
-      const result = await window.settingsAPI.saveConfig(config);
-      if (result.success) {
-        setSaveMessage('Settings saved successfully');
-        setConnectionStatus('idle');
-        setConnectionMessage('');
-      } else {
-        setSaveMessage(result.error || 'Failed to save settings');
-      }
+      const result = await window.settingsAPI.saveConfig({
+        provider, model: effectiveModel || 'gpt-4o', apiKey, thinkingLevel,
+      });
+      setSaveMessage(result.success ? 'Settings saved successfully' : (result.error || 'Failed to save'));
     } catch (err: unknown) {
-      setSaveMessage(
-        err instanceof Error ? err.message : 'Failed to save settings'
-      );
+      setSaveMessage(err instanceof Error ? err.message : 'Failed to save');
     }
+    setTimeout(() => setSaveMessage(''), 3000);
+  }, [provider, effectiveModel, apiKey, thinkingLevel]);
 
-    // Clear save message after a delay
-    setTimeout(() => {
-      setSaveMessage('');
-    }, 3000);
+  const handleTest = useCallback(async () => {
+    if (!window.settingsAPI || !apiKey.trim()) return;
+    setConnectionStatus('testing');
+    setConnectionMessage('Testing connection...');
+    setSaveMessage('');
+    try {
+      const result = await window.settingsAPI.testConnection({
+        provider, model: effectiveModel || 'gpt-4o', apiKey,
+      });
+      setConnectionStatus(result.success ? 'success' : 'error');
+      setConnectionMessage(result.success ? 'Connection successful!' : (result.error || 'Connection failed'));
+    } catch (err: unknown) {
+      setConnectionStatus('error');
+      setConnectionMessage(err instanceof Error ? err.message : 'Connection test failed');
+    }
   }, [provider, effectiveModel, apiKey]);
 
-  const handleClose = useCallback(() => {
-    if (window.settingsAPI) {
-      window.settingsAPI.closeWindow();
-    }
-  }, []);
-
-  const handleNotifToggle = useCallback(
-    (key: keyof NotificationConfig) => {
-      setNotifConfig((prev) => {
-        const next = { ...prev, [key]: !prev[key] };
-        // Auto-save on toggle
-        window.settingsAPI?.saveNotificationConfig?.(next).then((result) => {
-          if (result?.success) {
-            setNotifSaveMessage('Notification settings saved');
-          } else {
-            setNotifSaveMessage(result?.error || 'Failed to save');
-          }
-          setTimeout(() => setNotifSaveMessage(''), 2000);
-        });
-        return next;
-      });
-    },
-    []
-  );
-
-  const allNotificationsOff =
-    !notifConfig.systemToast && !notifConfig.petBubble && !notifConfig.petAnimation;
-
-  const currentProvider = PROVIDERS.find((p) => p.value === provider);
-  const isFormValid = provider && effectiveModel && apiKey.trim().length > 0;
-
-  // Styles
-  const styles: Record<string, React.CSSProperties> = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      padding: '32px 40px',
-      overflow: 'auto',
-    },
-    title: {
-      fontSize: 20,
-      fontWeight: 600,
-      marginBottom: 24,
-      color: '#F0F1F2',
-    },
-    section: {
-      marginBottom: 20,
-    },
-    label: {
-      display: 'block',
-      fontSize: 12,
-      fontWeight: 500,
-      color: 'rgba(200, 200, 210, 0.8)',
-      marginBottom: 6,
-      textTransform: 'uppercase' as const,
-      letterSpacing: '0.5px',
-    },
-    select: {
-      width: '100%',
-      padding: '10px 12px',
-      background: 'rgba(40, 42, 48, 0.9)',
-      border: '1px solid rgba(255, 255, 255, 0.12)',
-      borderRadius: 8,
-      color: '#F0F1F2',
-      fontSize: 14,
-      fontFamily: 'inherit',
-      outline: 'none',
-      cursor: 'pointer',
-      appearance: 'none' as const,
-      WebkitAppearance: 'none' as const,
-      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23aaa' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E")`,
-      backgroundRepeat: 'no-repeat',
-      backgroundPosition: 'right 12px center',
-      paddingRight: 32,
-    },
-    inputWrapper: {
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-    },
-    input: {
-      width: '100%',
-      padding: '10px 12px',
-      background: 'rgba(40, 42, 48, 0.9)',
-      border: '1px solid rgba(255, 255, 255, 0.12)',
-      borderRadius: 8,
-      color: '#F0F1F2',
-      fontSize: 14,
-      fontFamily: 'inherit',
-      outline: 'none',
-    },
-    toggleButton: {
-      position: 'absolute' as const,
-      right: 8,
-      background: 'none',
-      border: 'none',
-      color: 'rgba(200, 200, 210, 0.6)',
-      cursor: 'pointer',
-      padding: '4px 8px',
-      fontSize: 12,
-    },
-    buttonRow: {
-      display: 'flex',
-      gap: 12,
-      marginTop: 28,
-    },
-    button: {
-      padding: '10px 24px',
-      border: 'none',
-      borderRadius: 8,
-      fontSize: 14,
-      fontWeight: 500,
-      cursor: 'pointer',
-      fontFamily: 'inherit',
-      transition: 'opacity 0.15s ease',
-    },
-    saveButton: {
-      background: isFormValid ? 'rgba(80, 180, 120, 0.9)' : 'rgba(80, 180, 120, 0.4)',
-      color: '#fff',
-    },
-    testButton: {
-      background: 'rgba(60, 120, 200, 0.8)',
-      color: '#fff',
-    },
-    closeButton: {
-      background: 'rgba(80, 80, 90, 0.6)',
-      color: '#F0F1F2',
-    },
-    statusMessage: {
-      marginTop: 12,
-      fontSize: 13,
-      padding: '8px 12px',
-      borderRadius: 6,
-    },
-    successMessage: {
-      color: '#5cb85c',
-      background: 'rgba(92, 184, 92, 0.1)',
-    },
-    errorMessage: {
-      color: '#d9534f',
-      background: 'rgba(217, 83, 79, 0.1)',
-    },
-    infoMessage: {
-      color: '#f0ad4e',
-      background: 'rgba(240, 173, 78, 0.1)',
-    },
-    footer: {
-      marginTop: 'auto',
-      paddingTop: 16,
-      borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-    },
-    modelInputNote: {
-      fontSize: 11,
-      color: 'rgba(200, 200, 210, 0.5)',
-      marginTop: 4,
-    },
-  };
-
   if (!hasLoaded) {
-    return (
-      <div style={styles.container}>
-        <div style={{ color: 'rgba(200, 200, 210, 0.6)', textAlign: 'center', marginTop: 40 }}>
-          Loading settings...
-        </div>
-      </div>
-    );
+    return <div style={{ color: 'rgba(200,200,210,0.6)', textAlign: 'center', marginTop: 40 }}>Loading...</div>;
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.title}>LLM Configuration</div>
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+        LLM Configuration
+      </div>
 
-      {/* Provider select */}
-      <div style={styles.section}>
-        <label style={styles.label}>Provider</label>
-        <select
-          value={provider}
-          onChange={handleProviderChange}
-          style={styles.select}
-        >
-          {PROVIDERS.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
+      <div style={sharedStyles.field}>
+        <label style={sharedStyles.label}>Provider</label>
+        <select value={provider} onChange={(e) => {
+          const np = e.target.value;
+          setProvider(np);
+          setCustomModelValue('');
+          setConnectionStatus('idle'); setSaveMessage('');
+          const po = PROVIDERS.find((p) => p.value === np);
+          setModel(po && po.models.length > 0 ? po.models[0].value : '');
+        }} style={sharedStyles.select}>
+          {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
       </div>
 
-      {/* Model select or text input */}
-      <div style={styles.section}>
-        <label style={styles.label}>Model</label>
+      <div style={sharedStyles.field}>
+        <label style={sharedStyles.label}>Model</label>
         {currentProvider && currentProvider.models.length > 0 ? (
           <>
-            <select
-              value={model}
-              onChange={handleModelChange}
-              style={styles.select}
-            >
-              {currentProvider.models.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
+            <select value={model} onChange={(e) => { setModel(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }} style={sharedStyles.select}>
+              {currentProvider.models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               <option value={CUSTOM_MODEL_VALUE}>Custom...</option>
             </select>
             {isCustomModel && (
               <>
-                <input
-                  type="text"
-                  value={customModelValue}
-                  onChange={handleCustomModelChange}
-                  placeholder="Enter custom model name"
-                  style={{ ...styles.input, marginTop: 8 }}
-                />
-                <div style={styles.modelInputNote}>
-                  Enter any model name supported by {currentProvider.label}
-                </div>
+                <input type="text" value={customModelValue} onChange={(e) => { setCustomModelValue(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }}
+                  placeholder="Enter custom model name" style={{ ...sharedStyles.input, marginTop: 8 }} />
+                <div style={sharedStyles.hint}>Enter any model name supported by {currentProvider.label}</div>
               </>
             )}
           </>
         ) : (
           <>
-            <input
-              type="text"
-              value={model}
-              onChange={handleModelChange}
-              placeholder="Enter model ID (e.g., openai/gpt-4o)"
-              style={styles.input}
-            />
-            <div style={styles.modelInputNote}>
-              Enter the OpenRouter model ID in provider/model format
-            </div>
+            <input type="text" value={model} onChange={(e) => { setModel(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }}
+              placeholder="Enter model ID (e.g., openai/gpt-4o)" style={sharedStyles.input} />
+            <div style={sharedStyles.hint}>Enter the OpenRouter model ID in provider/model format</div>
           </>
         )}
       </div>
 
-      {/* API Key input */}
-      <div style={styles.section}>
-        <label style={styles.label}>API Key</label>
-        <div style={styles.inputWrapper}>
-          <input
-            type={showApiKey ? 'text' : 'password'}
-            value={apiKey}
-            onChange={handleApiKeyChange}
-            placeholder="Enter your API key"
-            style={{ ...styles.input, paddingRight: 60 }}
-          />
-          <button
-            onClick={() => setShowApiKey((prev) => !prev)}
-            style={styles.toggleButton}
-          >
+      <div style={sharedStyles.field}>
+        <label style={sharedStyles.label}>API Key</label>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <input type={showApiKey ? 'text' : 'password'} value={apiKey}
+            onChange={(e) => { setApiKey(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }}
+            placeholder="Enter your API key" style={{ ...sharedStyles.input, paddingRight: 60 }} />
+          <button onClick={() => setShowApiKey((p) => !p)}
+            style={{ position: 'absolute', right: 8, background: 'none', border: 'none', color: 'rgba(200,200,210,0.6)', cursor: 'pointer', padding: '4px 8px', fontSize: 12 }}>
             {showApiKey ? 'Hide' : 'Show'}
           </button>
         </div>
       </div>
 
-      {/* Thinking Level */}
-      <div style={styles.section}>
-        <label style={styles.label}>Thinking Level</label>
-        <select
-          value={thinkingLevel}
-          onChange={(e) => {
-            setThinkingLevel(e.target.value as ThinkingLevel);
-            setSaveMessage('');
-          }}
-          style={styles.select}
-        >
-          <option value="off">Off</option>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
+      <div style={sharedStyles.field}>
+        <label style={sharedStyles.label}>Thinking Level</label>
+        <select value={thinkingLevel} onChange={(e) => { setThinkingLevel(e.target.value as ThinkingLevel); setSaveMessage(''); }} style={sharedStyles.select}>
+          <option value="off">Off</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
         </select>
-        <div style={styles.modelInputNote}>
-          Controls how much the agent &quot;thinks&quot; before responding. Higher levels may improve reasoning but increase latency and cost.
-        </div>
+        <div style={sharedStyles.hint}>Controls how much the agent &quot;thinks&quot; before responding. Higher = better reasoning but slower.</div>
       </div>
 
-      {/* Action buttons */}
-      <div style={styles.buttonRow}>
-        <button
-          onClick={handleSave}
-          disabled={!isFormValid}
-          style={{
-            ...styles.button,
-            ...styles.saveButton,
-            cursor: isFormValid ? 'pointer' : 'not-allowed',
-          }}
-        >
+      <div style={sharedStyles.btnRow}>
+        <button onClick={handleSave} disabled={!isFormValid}
+          style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, opacity: isFormValid ? 1 : 0.4, cursor: isFormValid ? 'pointer' : 'not-allowed' }}>
           Save
         </button>
-        <button
-          onClick={handleTestConnection}
-          disabled={!isFormValid || connectionStatus === 'testing'}
-          style={{
-            ...styles.button,
-            ...styles.testButton,
-            cursor: isFormValid && connectionStatus !== 'testing' ? 'pointer' : 'not-allowed',
-            opacity: !isFormValid || connectionStatus === 'testing' ? 0.5 : 1,
-          }}
-        >
+        <button onClick={handleTest} disabled={!isFormValid || connectionStatus === 'testing'}
+          style={{ ...sharedStyles.btn, ...sharedStyles.btnTest, opacity: isFormValid && connectionStatus !== 'testing' ? 1 : 0.5, cursor: isFormValid && connectionStatus !== 'testing' ? 'pointer' : 'not-allowed' }}>
           {connectionStatus === 'testing' ? 'Testing...' : 'Test Connection'}
-        </button>
-        <button
-          onClick={handleClose}
-          style={{ ...styles.button, ...styles.closeButton }}
-        >
-          Close
         </button>
       </div>
 
-      {/* Connection test status */}
-      {connectionStatus !== 'idle' && connectionMessage && (
-        <div
-          style={{
-            ...styles.statusMessage,
-            ...(connectionStatus === 'success'
-              ? styles.successMessage
-              : connectionStatus === 'testing'
-                ? styles.infoMessage
-                : styles.errorMessage),
+      <StatusBlock status={connectionStatus} message={connectionMessage} />
+      <SaveStatus message={saveMessage} />
+    </>
+  );
+}
+
+function BrowserSection() {
+  const [browserConfig, setBrowserConfig] = useState<BrowserConfig>({ chromePath: '', cdpPort: 9222 });
+  const [connStatus, setConnStatus] = useState<ConnectionStatus>('idle');
+  const [connMessage, setConnMessage] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+
+  useEffect(() => {
+    window.settingsAPI?.loadBrowserConfig?.().then((cfg) => { if (cfg) setBrowserConfig(cfg); });
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!window.settingsAPI) return;
+    try {
+      const result = await window.settingsAPI.saveBrowserConfig(browserConfig);
+      setSaveMessage(result.success ? 'Browser settings saved' : (result.error || 'Failed to save'));
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : 'Failed to save');
+    }
+    setTimeout(() => setSaveMessage(''), 3000);
+  }, [browserConfig]);
+
+  const handleTest = useCallback(async () => {
+    if (!window.settingsAPI) return;
+    setConnStatus('testing'); setConnMessage('Testing connection...'); setSaveMessage('');
+    try {
+      const result = await window.settingsAPI.testBrowserConnection(browserConfig);
+      setConnStatus(result.success ? 'success' : 'error');
+      setConnMessage(result.success
+        ? (result.browserInfo ? `Connected: ${result.browserInfo}` : 'Connection successful!')
+        : (result.error || 'Connection failed'));
+    } catch (err: unknown) {
+      setConnStatus('error');
+      setConnMessage(err instanceof Error ? err.message : 'Connection test failed');
+    }
+  }, [browserConfig]);
+
+  return (
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+        Browser
+      </div>
+
+      <div style={sharedStyles.field}>
+        <label style={sharedStyles.label}>Chrome / Edge Path</label>
+        <input type="text" value={browserConfig.chromePath}
+          onChange={(e) => { setBrowserConfig((p) => ({ ...p, chromePath: e.target.value })); setConnStatus('idle'); setSaveMessage(''); }}
+          placeholder="Auto-detect (leave empty)" style={sharedStyles.input} />
+        <div style={sharedStyles.hint}>Leave empty to auto-detect Edge or Chrome on your system.</div>
+      </div>
+
+      <div style={sharedStyles.field}>
+        <label style={sharedStyles.label}>CDP Port</label>
+        <input type="number" min={1} max={65535} value={browserConfig.cdpPort}
+          onChange={(e) => {
+            const val = parseInt(e.target.value, 10);
+            setBrowserConfig((p) => ({ ...p, cdpPort: (val >= 1 && val <= 65535) ? val : 9222 }));
+            setConnStatus('idle'); setSaveMessage('');
           }}
-        >
-          {connectionMessage}
+          placeholder="9222" style={{ ...sharedStyles.input, width: 120 }} />
+        <div style={sharedStyles.hint}>Chrome must be running with --remote-debugging-port={'<port>'} for CDP to work.</div>
+      </div>
+
+      <div style={sharedStyles.btnRow}>
+        <button onClick={handleSave} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer' }}>Save</button>
+        <button onClick={handleTest} disabled={connStatus === 'testing'}
+          style={{ ...sharedStyles.btn, ...sharedStyles.btnTest, opacity: connStatus === 'testing' ? 0.5 : 1, cursor: connStatus === 'testing' ? 'not-allowed' : 'pointer' }}>
+          {connStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+        </button>
+      </div>
+
+      <StatusBlock status={connStatus} message={connMessage} />
+      <SaveStatus message={saveMessage} />
+    </>
+  );
+}
+
+function NotificationsSection() {
+  const [notifConfig, setNotifConfig] = useState<NotificationConfig>({ systemToast: true, petBubble: true, petAnimation: true });
+  const [saveMessage, setSaveMessage] = useState('');
+
+  useEffect(() => {
+    window.settingsAPI?.loadNotificationConfig?.().then((cfg) => { if (cfg) setNotifConfig(cfg); });
+  }, []);
+
+  const toggle = useCallback((key: keyof NotificationConfig) => {
+    setNotifConfig((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      window.settingsAPI?.saveNotificationConfig?.(next).then((r) => {
+        setSaveMessage(r?.success ? 'Notification settings saved' : (r?.error || 'Failed to save'));
+        setTimeout(() => setSaveMessage(''), 2000);
+      });
+      return next;
+    });
+  }, []);
+
+  const allOff = !notifConfig.systemToast && !notifConfig.petBubble && !notifConfig.petAnimation;
+
+  return (
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+        Notifications
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {[
+          { key: 'systemToast' as const, label: 'System Toast', hint: 'Windows notification when task completes' },
+          { key: 'petBubble' as const, label: 'Pet Bubble', hint: 'Show result summary above the pet' },
+          { key: 'petAnimation' as const, label: 'Pet Animation', hint: 'Play success/failure animation on the pet' },
+        ].map(({ key, label, hint }) => (
+          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={notifConfig[key]} onChange={() => toggle(key)}
+              style={{ width: 16, height: 16, cursor: 'pointer' }} />
+            <div>
+              <div style={{ fontSize: 14, color: '#F0F1F2' }}>{label}</div>
+              <div style={{ fontSize: 11, color: 'rgba(200,200,210,0.5)' }}>{hint}</div>
+            </div>
+          </label>
+        ))}
+      </div>
+
+      {allOff && (
+        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 6, background: 'rgba(240,173,78,0.1)', color: '#f0ad4e', fontSize: 12 }}>
+          All notifications are off — you won&apos;t be reminded when tasks complete.
         </div>
       )}
 
-      {/* Save status */}
       {saveMessage && (
-        <div
-          style={{
-            ...styles.statusMessage,
-            ...(saveMessage.includes('success')
-              ? styles.successMessage
-              : styles.errorMessage),
-          }}
-        >
+        <div style={{ marginTop: 8, fontSize: 12, color: saveMessage.includes('Failed') ? '#d9534f' : '#5cb85c' }}>
           {saveMessage}
         </div>
       )}
+    </>
+  );
+}
 
-      {/* Footer hint */}
-      <div style={styles.footer}>
-        <div style={{ fontSize: 12, color: 'rgba(200, 200, 210, 0.4)' }}>
-          Your API key is stored locally on this device and never sent to our servers.
+// ---------------------------------------------------------------------------
+// Main settings window with sidebar navigation
+// ---------------------------------------------------------------------------
+
+export const SettingsWindow: React.FC = () => {
+  const [section, setSection] = useState<Section>('llm');
+
+  const navItems: { key: Section; label: string }[] = [
+    { key: 'llm', label: 'LLM' },
+    { key: 'browser', label: 'Browser' },
+    { key: 'notifications', label: 'Notifications' },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Sidebar */}
+        <div style={{
+          width: 160,
+          background: '#1e1e24',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
+          padding: '16px 0',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          {navItems.map((item) => (
+            <div
+              key={item.key}
+              onClick={() => setSection(item.key)}
+              style={{
+                padding: '10px 20px',
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+                borderLeft: '2px solid transparent',
+                color: section === item.key ? '#F0F1F2' : 'rgba(200,200,210,0.5)',
+                borderLeftColor: section === item.key ? '#50b478' : 'transparent',
+                background: section === item.key ? 'rgba(80,180,120,0.08)' : 'transparent',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (section !== item.key) {
+                  (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.03)';
+                  (e.currentTarget as HTMLDivElement).style.color = 'rgba(200,200,210,0.8)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (section !== item.key) {
+                  (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLDivElement).style.color = 'rgba(200,200,210,0.5)';
+                }
+              }}
+            >
+              {item.label}
+            </div>
+          ))}
+        </div>
+
+        {/* Content area */}
+        <div style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
+          {section === 'llm' && <LLMSection />}
+          {section === 'browser' && <BrowserSection />}
+          {section === 'notifications' && <NotificationsSection />}
         </div>
       </div>
 
-      {/* Notifications section */}
-      <div style={{ ...styles.section, marginTop: 24, paddingTop: 20, borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
-        <div style={{ ...styles.title, fontSize: 16, marginBottom: 16 }}>Notifications</div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={notifConfig.systemToast}
-              onChange={() => handleNotifToggle('systemToast')}
-              style={{ width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <div>
-              <div style={{ fontSize: 14, color: '#F0F1F2' }}>System Toast</div>
-              <div style={{ fontSize: 11, color: 'rgba(200, 200, 210, 0.5)' }}>
-                Windows notification when task completes
-              </div>
-            </div>
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={notifConfig.petBubble}
-              onChange={() => handleNotifToggle('petBubble')}
-              style={{ width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <div>
-              <div style={{ fontSize: 14, color: '#F0F1F2' }}>Pet Bubble</div>
-              <div style={{ fontSize: 11, color: 'rgba(200, 200, 210, 0.5)' }}>
-                Show result summary above the pet
-              </div>
-            </div>
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={notifConfig.petAnimation}
-              onChange={() => handleNotifToggle('petAnimation')}
-              style={{ width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <div>
-              <div style={{ fontSize: 14, color: '#F0F1F2' }}>Pet Animation</div>
-              <div style={{ fontSize: 11, color: 'rgba(200, 200, 210, 0.5)' }}>
-                Play success/failure animation on the pet
-              </div>
-            </div>
-          </label>
-        </div>
-
-        {allNotificationsOff && (
-          <div style={{
-            marginTop: 12,
-            padding: '8px 12px',
-            borderRadius: 6,
-            background: 'rgba(240, 173, 78, 0.1)',
-            color: '#f0ad4e',
-            fontSize: 12,
-          }}>
-            All notifications are off — you won&apos;t be reminded when tasks complete.
-          </div>
-        )}
-
-        {notifSaveMessage && (
-          <div style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: notifSaveMessage.includes('Failed') ? '#d9534f' : '#5cb85c',
-          }}>
-            {notifSaveMessage}
-          </div>
-        )}
+      {/* Footer */}
+      <div style={{
+        padding: '10px 28px',
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        fontSize: 11,
+        color: 'rgba(200,200,210,0.4)',
+      }}>
+        Your API key is stored locally on this device and never sent to our servers.
       </div>
     </div>
   );

@@ -33,7 +33,7 @@ import {
   IPC_CHAT_SLIDE_OUT_COMPLETE,
   MESSAGE_BUFFER_MAX,
 } from '../shared/constants';
-import { readConfig, updateLLMConfig, updateNotificationConfig } from '../config/config-store';
+import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig } from '../config/config-store';
 import { MessageRole } from '../shared/types';
 import type {
   LLMConfig,
@@ -41,6 +41,7 @@ import type {
   ChatEntry,
   ToolCardEntry,
   NotificationConfig,
+  BrowserConfig,
   AgentToRendererMessage,
   RendererToAgentMessage,
 } from '../shared/types';
@@ -319,16 +320,19 @@ function bootstrap(): void {
       // Auto-show ChatWindow for confirmation requests
       if (msg.type === 'confirmation-request') {
         let chatWin = getChatWindow();
+        const petPt = petWindow && !petWindow.isDestroyed()
+          ? (() => { const [x, y] = petWindow.getPosition(); return { x: x + 80, y: y + 80 }; })()
+          : undefined;
         if (!chatWin) {
           const chatHtmlPath = getChatHtmlPath();
           const chatPreloadPath = getChatPreloadPath();
-          createChatWindow(chatHtmlPath, chatPreloadPath);
+          createChatWindow(chatHtmlPath, chatPreloadPath, petPt);
           chatWin = getChatWindow();
           chatWin?.once('ready-to-show', () => {
-            showChatWindow();
+            showChatWindow(petPt);
           });
         } else {
-          showChatWindow();
+          showChatWindow(petPt);
         }
       }
 
@@ -373,16 +377,19 @@ function bootstrap(): void {
     // ---- Open chat sidebar ----
     ipcMain.on(IPC_OPEN_CHAT, () => {
       let chatWin = getChatWindow();
+      const petPt = petWindow && !petWindow.isDestroyed()
+        ? (() => { const [x, y] = petWindow.getPosition(); return { x: x + 80, y: y + 80 }; })()
+        : undefined;
       if (!chatWin) {
         const chatHtmlPath = getChatHtmlPath();
         const chatPreloadPath = getChatPreloadPath();
-        createChatWindow(chatHtmlPath, chatPreloadPath);
+        createChatWindow(chatHtmlPath, chatPreloadPath, petPt);
         chatWin = getChatWindow();
         chatWin?.once('ready-to-show', () => {
-          showChatWindow();
+          showChatWindow(petPt);
         });
       } else {
-        showChatWindow();
+        showChatWindow(petPt);
       }
     });
 
@@ -597,6 +604,98 @@ function bootstrap(): void {
         } catch (err: unknown) {
           const errorMessage = err instanceof Error ? err.message : String(err);
           return { success: false, error: errorMessage };
+        }
+      }
+    );
+
+    // Browser config handlers
+    ipcMain.handle('settings:load-browser-config', () => {
+      const config = readConfig();
+      return config.browser;
+    });
+
+    ipcMain.handle(
+      'settings:save-browser-config',
+      (_event: Electron.IpcMainInvokeEvent, browser: BrowserConfig) => {
+        try {
+          updateBrowserConfig(browser);
+          return { success: true };
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          return { success: false, error: errorMessage };
+        }
+      }
+    );
+
+    ipcMain.handle(
+      'settings:test-browser-connection',
+      async (
+        _event: Electron.IpcMainInvokeEvent,
+        browserConfig: BrowserConfig
+      ): Promise<{ success: boolean; error?: string; browserInfo?: string }> => {
+        const port = browserConfig.cdpPort || 9222;
+
+        // Validate port range
+        if (port < 1 || port > 65535) {
+          return { success: false, error: `Invalid port: ${port}. Must be between 1 and 65535.` };
+        }
+
+        // Validate configured Chrome path if provided
+        if (browserConfig.chromePath) {
+          try {
+            const fs = require('fs') as typeof import('fs');
+            if (!fs.existsSync(browserConfig.chromePath)) {
+              return {
+                success: false,
+                error: `Chrome path not found: "${browserConfig.chromePath}"`,
+              };
+            }
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { success: false, error: `Cannot check Chrome path: ${message}` };
+          }
+        }
+
+        try {
+          const { net } = require('electron') as typeof import('electron');
+          const request = net.request(`http://127.0.0.1:${port}/json/version`);
+          return new Promise((resolve) => {
+            request.on('response', (response) => {
+              let body = '';
+              response.on('data', (chunk: Buffer) => {
+                body += chunk.toString();
+              });
+              response.on('end', () => {
+                try {
+                  const info = JSON.parse(body);
+                  resolve({
+                    success: true,
+                    browserInfo: `${info.Browser || 'Unknown'} (${info['User-Agent'] || ''})`,
+                  });
+                } catch {
+                  resolve({ success: true, browserInfo: 'Connected (version info unavailable)' });
+                }
+              });
+            });
+            request.on('error', (err: Error) => {
+              resolve({
+                success: false,
+                error: `Cannot connect to port ${port}: ${err.message}`,
+              });
+            });
+            const timer = setTimeout(() => {
+              request.abort();
+              resolve({
+                success: false,
+                error: `Connection to port ${port} timed out. Is Chrome running with --remote-debugging-port=${port}?`,
+              });
+            }, 5000);
+            request.on('response', () => { clearTimeout(timer); });
+            request.end();
+          });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          return { success: false, error: message };
         }
       }
     );

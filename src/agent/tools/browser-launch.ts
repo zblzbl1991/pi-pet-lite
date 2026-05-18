@@ -37,10 +37,20 @@ const BROWSER_PATHS = [
 
 /**
  * Find the first available browser (Edge or Chrome) on the system.
+ * If a configured path is provided and it exists, use that instead.
  *
  * @returns Absolute path to the browser executable, or null if none found.
  */
-export function findBrowserPath(): string | null {
+export function findBrowserPath(configuredPath?: string): string | null {
+  if (configuredPath) {
+    try {
+      if (fs.existsSync(configuredPath)) {
+        return configuredPath;
+      }
+    } catch {
+      // Configured path doesn't exist, fall through to auto-detect
+    }
+  }
   for (const browserPath of BROWSER_PATHS) {
     try {
       if (fs.existsSync(browserPath)) {

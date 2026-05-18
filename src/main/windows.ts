@@ -2,7 +2,6 @@ import { BrowserWindow, screen } from 'electron';
 import path from 'path';
 import {
   CHAT_WINDOW_WIDTH,
-  CHAT_WINDOW_HEIGHT,
   QUICK_INPUT_WIDTH,
   QUICK_INPUT_HEIGHT,
 } from '../shared/constants';
@@ -77,10 +76,10 @@ export function createSettingsWindow(
   }
 
   settingsWindow = new BrowserWindow({
-    width: 560,
-    height: 480,
-    minWidth: 400,
-    minHeight: 360,
+    width: 680,
+    height: 520,
+    minWidth: 560,
+    minHeight: 420,
     resizable: true,
     title: 'Clawd Settings',
     backgroundColor: '#1a1c1f',
@@ -119,36 +118,42 @@ export function getSettingsHtmlPath(): string {
   return path.join(__dirname, '..', 'renderer', 'settings', 'index.html');
 }
 
-/** Track the chat window to prevent duplicates */
+/** Track the chat sidebar window (singleton, hidden not destroyed) */
 let chatWindow: BrowserWindow | null = null;
 
 /**
- * Create (or focus) the chat BrowserWindow.
- * Singleton pattern: if already exists, show and focus it.
- * The window is positioned near the pet window.
+ * Create the chat sidebar BrowserWindow.
+ * Frameless, full-height, positioned at the right edge of the display nearest to the pet.
+ * Starts hidden; use showChatWindow() to trigger slide-in.
  */
 export function createChatWindow(
   htmlPath: string,
   preloadPath: string,
-  position?: { x: number; y: number }
+  petPoint?: { x: number; y: number }
 ): BrowserWindow {
   if (chatWindow && !chatWindow.isDestroyed()) {
-    chatWindow.show();
-    chatWindow.focus();
     return chatWindow;
   }
 
+  const display = petPoint
+    ? screen.getDisplayNearestPoint(petPoint)
+    : screen.getPrimaryDisplay();
+  const wa = display.workArea;
+
   chatWindow = new BrowserWindow({
     width: CHAT_WINDOW_WIDTH,
-    height: CHAT_WINDOW_HEIGHT,
+    height: wa.height,
+    x: wa.x + wa.width - CHAT_WINDOW_WIDTH,
+    y: wa.y,
     minWidth: 320,
     minHeight: 400,
     resizable: true,
-    title: 'Clawd Chat',
+    frame: false,
+    skipTaskbar: true,
+    title: '',
     backgroundColor: '#1e1f22',
     autoHideMenuBar: true,
     show: false,
-    ...(position ? { x: position.x, y: position.y } : {}),
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -159,19 +164,57 @@ export function createChatWindow(
 
   chatWindow.loadFile(htmlPath);
 
-  chatWindow.once('ready-to-show', () => {
-    chatWindow?.show();
-  });
-
-  chatWindow.on('closed', () => {
-    chatWindow = null;
+  // Prevent actual close — hide instead (window persists in memory)
+  chatWindow.on('close', (e) => {
+    e.preventDefault();
+    hideChatWindow();
   });
 
   return chatWindow;
 }
 
 /**
- * Get the current chat window (may be null if closed).
+ * Show the chat sidebar and trigger slide-in animation via IPC.
+ * Repositions to the display nearest to the pet point.
+ */
+export function showChatWindow(petPoint?: { x: number; y: number }): void {
+  if (!chatWindow || chatWindow.isDestroyed()) return;
+
+  // Reposition to the display where the pet is
+  const display = petPoint
+    ? screen.getDisplayNearestPoint(petPoint)
+    : screen.getPrimaryDisplay();
+  const wa = display.workArea;
+  const targetX = wa.x + wa.width - CHAT_WINDOW_WIDTH;
+  const targetY = wa.y;
+
+  // Use setSize + setPosition separately for reliable cross-monitor resize
+  chatWindow.setSize(CHAT_WINDOW_WIDTH, wa.height);
+  chatWindow.setPosition(targetX, targetY);
+
+  chatWindow.show();
+  chatWindow.webContents.send('chat:slide-in');
+}
+
+/**
+ * Trigger slide-out animation. Window is hidden after animation completes
+ * (renderer sends 'chat:slide-out-complete').
+ */
+export function hideChatWindow(): void {
+  if (!chatWindow || chatWindow.isDestroyed() || !chatWindow.isVisible()) return;
+  chatWindow.webContents.send('chat:slide-out');
+}
+
+/**
+ * Actually hide the window (called after slide-out animation completes).
+ */
+export function forceHideChatWindow(): void {
+  if (!chatWindow || chatWindow.isDestroyed()) return;
+  chatWindow.hide();
+}
+
+/**
+ * Get the current chat window (may be null if not yet created).
  */
 export function getChatWindow(): BrowserWindow | null {
   return chatWindow && !chatWindow.isDestroyed() ? chatWindow : null;

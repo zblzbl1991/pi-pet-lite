@@ -9,6 +9,7 @@ import type {
   ChatMessage,
   LLMConfig,
   NotificationConfig,
+  BrowserConfig,
   PetElectronAPI,
   ChatElectronAPI,
   QuickInputElectronAPI,
@@ -23,6 +24,9 @@ export interface SettingsElectronAPI {
   testConnection: (config: LLMConfig) => Promise<{ success: boolean; error?: string }>;
   loadNotificationConfig: () => Promise<NotificationConfig>;
   saveNotificationConfig: (config: NotificationConfig) => Promise<{ success: boolean; error?: string }>;
+  loadBrowserConfig: () => Promise<BrowserConfig>;
+  saveBrowserConfig: (config: BrowserConfig) => Promise<{ success: boolean; error?: string }>;
+  testBrowserConnection: (config: BrowserConfig) => Promise<{ success: boolean; error?: string; browserInfo?: string }>;
   closeWindow: () => void;
 }
 

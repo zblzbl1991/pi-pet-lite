@@ -108,10 +108,17 @@ export interface NotificationConfig {
   petAnimation: boolean;
 }
 
+/** Browser CDP configuration */
+export interface BrowserConfig {
+  chromePath: string;
+  cdpPort: number;
+}
+
 /** Application configuration */
 export interface AppConfig {
   llm: LLMConfig;
   notifications: NotificationConfig;
+  browser: BrowserConfig;
 }
 
 /** Messages sent from renderer to agent via MessagePort */

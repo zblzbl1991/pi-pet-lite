@@ -18,7 +18,8 @@
  */
 
 import { Type } from 'typebox';
-import { findBrowserPath, launchBrowserWithCDP, DEFAULT_CDP_PORT } from './browser-launch';
+import { findBrowserPath, launchBrowserWithCDP } from './browser-launch';
+import { readConfig } from '../../config/config-store';
 
 // ---------------------------------------------------------------------------
 // Type aliases for pi-agent-core types
@@ -38,6 +39,7 @@ type PlaywrightPage = import('playwright').Page;
 // Singleton browser connection
 // ---------------------------------------------------------------------------
 let browserConnection: PlaywrightBrowser | null = null;
+let lastCdpPort: number | null = null;
 let playwrightModule: typeof import('playwright') | null = null;
 
 /**
@@ -63,20 +65,25 @@ async function loadPlaywright(): Promise<typeof import('playwright')> {
  * Returns the connected Browser instance.
  */
 async function getOrConnectBrowser(): Promise<PlaywrightBrowser> {
-  // Reuse existing connection if still connected
-  if (browserConnection && browserConnection.isConnected()) {
+  const config = readConfig();
+  const cdpPort = config.browser?.cdpPort || 9222;
+  const configuredChromePath = config.browser?.chromePath || undefined;
+
+  // Reuse existing connection if still connected AND port hasn't changed
+  if (browserConnection && browserConnection.isConnected() && lastCdpPort === cdpPort) {
     return browserConnection;
   }
 
-  // Reset stale connection
+  // Port changed — discard stale reference (do NOT close: that would kill the user's browser)
   browserConnection = null;
+  lastCdpPort = cdpPort;
 
   const pw = await loadPlaywright();
 
   // Try connecting to a browser already listening on the CDP port
   try {
     browserConnection = await pw.chromium.connectOverCDP(
-      `http://localhost:${DEFAULT_CDP_PORT}`
+      `http://localhost:${cdpPort}`
     );
     // Handle disconnection (user closed browser)
     browserConnection.on('disconnected', () => {
@@ -88,20 +95,20 @@ async function getOrConnectBrowser(): Promise<PlaywrightBrowser> {
   }
 
   // Find a browser on the system
-  const browserPath = findBrowserPath();
+  const browserPath = findBrowserPath(configuredChromePath);
   if (!browserPath) {
     throw new Error(
       'No Chrome or Edge browser found on this system. ' +
       'Please install Chrome or Edge, or start your browser with ' +
-      '--remote-debugging-port=9222 and try again.'
+      `--remote-debugging-port=${cdpPort} and try again.`
     );
   }
 
   // Launch browser with CDP enabled
-  const { cdpReady } = await launchBrowserWithCDP(browserPath, DEFAULT_CDP_PORT);
+  const { cdpReady } = await launchBrowserWithCDP(browserPath, cdpPort);
   if (!cdpReady) {
     throw new Error(
-      `Launched browser at "${browserPath}" but CDP port ${DEFAULT_CDP_PORT} ` +
+      `Launched browser at "${browserPath}" but CDP port ${cdpPort} ` +
       'did not become available in time. The browser may already be running. ' +
       'Try closing all browser windows and retrying.'
     );
@@ -109,7 +116,7 @@ async function getOrConnectBrowser(): Promise<PlaywrightBrowser> {
 
   // Connect to the newly launched browser
   browserConnection = await pw.chromium.connectOverCDP(
-    `http://localhost:${DEFAULT_CDP_PORT}`
+    `http://localhost:${cdpPort}`
   );
 
   // Handle disconnection (user closed browser)

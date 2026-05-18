@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
-import { AppConfig, LLMConfig, NotificationConfig, ThinkingLevel } from '../shared/types';
+import { AppConfig, LLMConfig, NotificationConfig, BrowserConfig, ThinkingLevel } from '../shared/types';
 import { CONFIG_FILENAME } from '../shared/constants';
 
 /**
@@ -38,6 +38,10 @@ const DEFAULT_CONFIG: AppConfig = {
     petBubble: true,
     petAnimation: true,
   },
+  browser: {
+    chromePath: '',
+    cdpPort: 9222,
+  },
 };
 
 /**
@@ -60,6 +64,10 @@ export function readConfig(): AppConfig {
       notifications: {
         ...DEFAULT_CONFIG.notifications,
         ...parsed.notifications,
+      },
+      browser: {
+        ...DEFAULT_CONFIG.browser,
+        ...parsed.browser,
       },
     };
   } catch {
@@ -105,6 +113,22 @@ export function updateNotificationConfig(notifications: Partial<NotificationConf
     notifications: {
       ...current.notifications,
       ...notifications,
+    },
+  };
+  writeConfig(updated);
+  return updated;
+}
+
+/**
+ * Update only the browser config section.
+ */
+export function updateBrowserConfig(browser: Partial<BrowserConfig>): AppConfig {
+  const current = readConfig();
+  const updated: AppConfig = {
+    ...current,
+    browser: {
+      ...current.browser,
+      ...browser,
     },
   };
   writeConfig(updated);

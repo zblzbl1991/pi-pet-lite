@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { LLMConfig, NotificationConfig } from '../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig } from '../shared/types';
 
 /**
  * Preload script for the settings BrowserWindow.
@@ -39,6 +39,29 @@ const api = {
     return ipcRenderer.invoke('settings:save-notifications', config) as Promise<{
       success: boolean;
       error?: string;
+    }>;
+  },
+
+  loadBrowserConfig(): Promise<BrowserConfig> {
+    return ipcRenderer.invoke('settings:load-browser-config') as Promise<BrowserConfig>;
+  },
+
+  saveBrowserConfig(
+    config: BrowserConfig
+  ): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('settings:save-browser-config', config) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  testBrowserConnection(
+    config: BrowserConfig
+  ): Promise<{ success: boolean; error?: string; browserInfo?: string }> {
+    return ipcRenderer.invoke('settings:test-browser-connection', config) as Promise<{
+      success: boolean;
+      error?: string;
+      browserInfo?: string;
     }>;
   },
 
