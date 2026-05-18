@@ -6,46 +6,59 @@
 
 ## Overview
 
-<!--
-Document your project's hook conventions here.
-
-Questions to answer:
-- What custom hooks do you have?
-- How do you handle data fetching?
-- What are the naming conventions?
-- How do you share stateful logic?
--->
-
-(To be filled by the team)
+No custom hooks are currently extracted. All hook usage is inline within components using React's built-in hooks: `useState`, `useEffect`, `useCallback`, `useRef`.
 
 ---
 
-## Custom Hook Patterns
+## Hook Usage Patterns
 
-<!-- How to create and structure custom hooks -->
+### useState — component state
 
-(To be filled by the team)
+```typescript
+const [entries, setEntries] = useState<ChatEntry[]>([]);
+const [streamingId, setStreamingId] = useState<string | null>(null);
+const [collapsed, setCollapsed] = useState<Map<string, CardCollapseState>>(new Map());
+```
+
+### useEffect — side effects
+
+```typescript
+// IPC listener setup on mount
+useEffect(() => {
+  const cleanup = api.onAgentMessage((msg) => { ... });
+  return cleanup;
+}, []);
+
+// Load data on mount
+useEffect(() => {
+  api.syncHistory().then(setEntries);
+}, []);
+```
+
+### useCallback — memoized handlers
+
+```typescript
+const handleSubmit = useCallback((text: string) => {
+  api.sendToAgent({ type: 'user-input', text });
+}, []);
+```
+
+### useRef — mutable state that doesn't trigger re-renders
+
+```typescript
+const dragRef = useRef({ isDragging: false, startX: 0, startY: 0 });
+```
 
 ---
 
-## Data Fetching
+## When to Extract Custom Hooks
 
-<!-- How data fetching is handled (React Query, SWR, etc.) -->
-
-(To be filled by the team)
+If stateful logic is shared across components or windows, extract to `useXxx()` in the same file or a co-located `hooks.ts`. Currently not needed — each window has its own independent state.
 
 ---
 
 ## Naming Conventions
 
-<!-- Hook naming rules (use*, etc.) -->
-
-(To be filled by the team)
-
----
-
-## Common Mistakes
-
-<!-- Hook-related mistakes your team has made -->
-
-(To be filled by the team)
+- Custom hooks: `use` prefix (e.g., `useChatHistory`, `usePetDrag`)
+- State setters: `set` + PascalCase variable name (e.g., `setEntries`, `setStreamingId`)
+- Refs: `Ref` suffix (e.g., `dragRef`, `inputRef`)

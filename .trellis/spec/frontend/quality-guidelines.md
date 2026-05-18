@@ -1,51 +1,60 @@
 # Quality Guidelines
 
-> Code quality standards for frontend development.
+> Code quality standards for frontend (renderer) development.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's quality standards here.
-
-Questions to answer:
-- What patterns are forbidden?
-- What linting rules do you enforce?
-- What are your testing requirements?
-- What code review standards apply?
--->
-
-(To be filled by the team)
-
----
-
-## Forbidden Patterns
-
-<!-- Patterns that should never be used and why -->
-
-(To be filled by the team)
+No linter, formatter, test framework, or CI/CD configured. Quality is enforced through TypeScript strict mode and consistent code patterns.
 
 ---
 
 ## Required Patterns
 
-<!-- Patterns that must always be used -->
-
-(To be filled by the team)
-
----
-
-## Testing Requirements
-
-<!-- What level of testing is expected -->
-
-(To be filled by the team)
+- **Functional components only** — `React.FC<Props>` type, named exports
+- **Inline styles only** — no CSS files, no Tailwind, no CSS modules
+- **Dark theme colors** — use the established palette (see component-guidelines.md)
+- **IPC via preload bridge** — all renderer ↔ main communication through `window.electronAPI` / `window.settingsAPI`
+- **`useEffect` cleanup** — always clean up IPC listeners on unmount
+- **TypeScript strict** — all tsconfigs use `strict: true`
 
 ---
 
-## Code Review Checklist
+## Forbidden Patterns
 
-<!-- What reviewers should check -->
+- `any` type — use `unknown` and narrow
+- CSS files / Tailwind / CSS modules — inline styles only
+- `dangerouslySetInnerHTML` — never needed for this app
+- `nodeIntegration: true` — all windows use `contextIsolation: true`, `sandbox: true`
+- Default exports — always named exports
+- Class components — functional only
 
-(To be filled by the team)
+---
+
+## Build Verification
+
+```bash
+npm run typecheck   # tsc --noEmit for both node and renderer configs
+npm run build       # Full build (tsc + vite)
+```
+
+Both must pass with zero errors.
+
+---
+
+## Renderer Build
+
+- **Vite** with multi-page config: 4 HTML entries
+- **`@shared`** alias maps to `src/shared/`
+- Base path is `'./'` for `file://` protocol compatibility
+- Output goes to `dist/renderer/`, does NOT clear tsc output (`emptyOutDir: false`)
+
+---
+
+## Adding New UI
+
+1. Create component file in the appropriate `src/renderer/<window>/` directory
+2. Import types from `@shared/types` (alias for `src/shared/`)
+3. Use inline styles matching the existing dark theme palette
+4. Add IPC calls through the window's preload API (never direct Electron imports)

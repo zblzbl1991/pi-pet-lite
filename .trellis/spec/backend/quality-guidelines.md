@@ -1,51 +1,65 @@
 # Quality Guidelines
 
-> Code quality standards for backend development.
+> Code quality standards for backend (main/agent) development.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's quality standards here.
-
-Questions to answer:
-- What patterns are forbidden?
-- What linting rules do you enforce?
-- What are your testing requirements?
-- What code review standards apply?
--->
-
-(To be filled by the team)
-
----
-
-## Forbidden Patterns
-
-<!-- Patterns that should never be used and why -->
-
-(To be filled by the team)
+This is a single-developer Electron desktop app. No linter, formatter, test framework, or CI/CD is configured. Quality is enforced through TypeScript strict mode and consistent code patterns.
 
 ---
 
 ## Required Patterns
 
-<!-- Patterns that must always be used -->
-
-(To be filled by the team)
-
----
-
-## Testing Requirements
-
-<!-- What level of testing is expected -->
-
-(To be filled by the team)
+- **TypeScript strict mode** — all tsconfigs use `"strict": true`
+- **`err: unknown`** in catch blocks — never `err: Error` or `err: any`
+- **Const objects as enums** — not TypeScript `enum` keyword
+- **`textResult()` / `errorResult()`** helpers for tool return values
+- **TypeBox** for tool parameter schemas — not Zod or manual JSON schema
+- **Dynamic ESM import** via `new Function('modulePath', 'return import(modulePath)')` for ESM-only packages
+- **Module-level `let` caching** for dynamically imported modules
 
 ---
 
-## Code Review Checklist
+## Forbidden Patterns
 
-<!-- What reviewers should check -->
+- `any` type (use `unknown` and narrow)
+- TypeScript `enum` (use const object pattern)
+- `eval()` (the `new Function('modulePath', ...)` dynamic import is an intentional exception)
+- `child_process.exec()` (use `spawn()` with explicit args)
+- `nodeIntegration: true` in BrowserWindow options
 
-(To be filled by the team)
+---
+
+## Build Verification
+
+Before considering work done, run:
+```bash
+npm run typecheck
+npm run build
+```
+
+Both must pass with zero errors.
+
+---
+
+## Tool Definition Standard
+
+Every tool follows this pattern:
+```typescript
+function buildXxxTool(): PiAgentTool[] {
+  return [{
+    name: 'tool_name',
+    label: 'Human Label',
+    description: 'What it does',
+    parameters: Type.Object({ ... }),
+    execute: async (_toolCallId, params, signal?, onUpdate?): Promise<PiAgentToolResult> => {
+      try { return textResult(...); }
+      catch (err: unknown) { return errorResult(getErrorMessage(err)); }
+    },
+  }];
+}
+```
+
+Register in `src/agent/tools/registry.ts` `getCustomTools()`.

@@ -1,54 +1,76 @@
 # Directory Structure
 
-> How backend code is organized in this project.
+> How backend (main/agent/config) code is organized in this Electron project.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's backend directory structure here.
-
-Questions to answer:
-- How are modules/packages organized?
-- Where does business logic live?
-- Where are API endpoints defined?
-- How are utilities and helpers organized?
--->
-
-(To be filled by the team)
+This is an Electron desktop app with a **main process**, a **utility process** (agent), and shared code. There is no traditional backend server — the "backend" is the Electron main process and the agent utility process.
 
 ---
 
 ## Directory Layout
 
 ```
-<!-- Replace with your actual structure -->
 src/
-├── ...
-└── ...
+├── main/                    # Electron main process
+│   ├── main.ts              # Entry: bootstrap(), IPC handlers, message buffer
+│   ├── tray.ts              # System tray icon
+│   └── windows.ts           # BrowserWindow factories (pet, settings, chat, quick-input)
+├── agent/                   # Agent utility process
+│   ├── agent-process.ts     # Utility process entry: MessagePort relay
+│   ├── llm.ts               # Dynamic ESM import wrapper for pi-ai
+│   ├── runtime.ts           # Agent runtime: wraps pi-agent-core Agent
+│   ├── state-machine.ts     # State transitions + GIF mapping
+│   └── tools/               # Agent tools
+│       ├── registry.ts      # Central tool registry
+│       ├── browser.ts       # Browser automation tool
+│       ├── browser-launch.ts # Chrome/Edge CDP launcher
+│       └── scheduler.ts     # Cron scheduled task tool
+├── config/                  # Configuration
+│   └── config-store.ts      # JSON file read/write for AppConfig
+├── preload/                 # Preload scripts (one per window)
+│   ├── preload.ts           # Pet window
+│   ├── settings-preload.ts  # Settings window
+│   ├── chat-preload.ts      # Chat window
+│   └── quick-input-preload.ts # Quick input
+├── shared/                  # Shared between all processes
+│   ├── types.ts             # All shared types and interfaces
+│   └── constants.ts         # IPC channel names, dimensions, trust policy
+├── electron-shim.d.ts       # Type declarations for Electron, playwright, etc.
 ```
 
 ---
 
 ## Module Organization
 
-<!-- How should new features/modules be organized? -->
+- **`src/main/`** — Main process only. Window lifecycle, IPC routing, tray.
+- **`src/agent/`** — Agent utility process only. Runs in separate process via `utilityProcess.fork()`.
+- **`src/config/`** — Config read/write shared between main and agent.
+- **`src/preload/`** — One preload per BrowserWindow. Each exposes a specific API shape.
+- **`src/shared/`** — Types and constants imported by all processes. No runtime logic.
+- **`src/agent/tools/`** — Each tool file exports a `buildXxxTool()` function returning `PiAgentTool[]`.
 
-(To be filled by the team)
+New features that add tools go in `src/agent/tools/`. New windows add entries to `src/main/windows.ts`, a preload in `src/preload/`, and a renderer in `src/renderer/`.
 
 ---
 
 ## Naming Conventions
 
-<!-- File and folder naming rules -->
-
-(To be filled by the team)
+| Category | Convention | Examples |
+|---|---|---|
+| Files | kebab-case | `agent-process.ts`, `config-store.ts` |
+| Directories | kebab-case | `quick-input/`, `shared/` |
+| Constants | UPPER_SNAKE_CASE | `IPC_AGENT_MESSAGE`, `MESSAGE_BUFFER_MAX` |
+| Functions | camelCase | `createPetWindow()`, `readConfig()` |
+| IPC channels | kebab-case, namespaced | `'agent-message'`, `'chat:sync-history'` |
+| Type aliases (dynamic imports) | `Pi` prefix | `PiAgentTool`, `PiAgentToolResult` |
 
 ---
 
 ## Examples
 
-<!-- Link to well-organized modules as examples -->
-
-(To be filled by the team)
+- Well-organized tool module: `src/agent/tools/scheduler.ts` — single `buildSchedulerTool()` export, TypeBox parameters, `textResult`/`errorResult` helpers.
+- Config pattern: `src/config/config-store.ts` — sync read/write, merge-on-update.
+- IPC handler pattern: `src/main/main.ts` — `ipcMain.handle()` for request-response, `ipcMain.on()` for fire-and-forget.

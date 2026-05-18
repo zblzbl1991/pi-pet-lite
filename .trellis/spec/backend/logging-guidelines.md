@@ -6,46 +6,43 @@
 
 ## Overview
 
-<!--
-Document your project's logging conventions here.
-
-Questions to answer:
-- What logging library do you use?
-- What are the log levels and when to use each?
-- What should be logged?
-- What should NOT be logged (PII, secrets)?
--->
-
-(To be filled by the team)
+No logging library is used. The project uses raw `console.error()`, `console.warn()`, and `console.log()`.
 
 ---
 
 ## Log Levels
 
-<!-- When to use each level: debug, info, warn, error -->
-
-(To be filled by the team)
-
----
-
-## Structured Logging
-
-<!-- Log format, required fields -->
-
-(To be filled by the team)
+| Level | When to use | Example |
+|---|---|---|
+| `console.error()` | Failures that affect functionality | Agent runtime crash, browser process error, scheduled task failure |
+| `console.warn()` | Unexpected but recoverable situations | Unknown message type, deprecated API usage |
+| `console.log()` | Dev-only informational output | Build progress in `scripts/dev.js` |
 
 ---
 
-## What to Log
+## Patterns
 
-<!-- Important events to log -->
+```typescript
+// Error with context
+console.error('Failed to initialize agent runtime:', errorMessage);
 
-(To be filled by the team)
+// Warning for unexpected input
+console.warn('Unknown message type from renderer:', msgType);
+
+// Error in catch block
+console.error(`Browser process error: ${err.message}`);
+```
 
 ---
 
 ## What NOT to Log
 
-<!-- Sensitive data, PII, secrets -->
+- API keys or tokens
+- User chat content (privacy)
+- File system paths containing username on Windows (`C:\Users\...`)
 
-(To be filled by the team)
+---
+
+## Future Consideration
+
+If structured logging is added later, wrap console calls in a logger module. Current pattern is intentionally simple for a single-developer desktop app.

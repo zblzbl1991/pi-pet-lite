@@ -1,51 +1,55 @@
 # Database Guidelines
 
-> Database patterns and conventions for this project.
+> Storage patterns for this Electron desktop app.
 
 ---
 
 ## Overview
 
-<!--
-Document your project's database conventions here.
-
-Questions to answer:
-- What ORM/query library do you use?
-- How are migrations managed?
-- What are the naming conventions for tables/columns?
-- How do you handle transactions?
--->
-
-(To be filled by the team)
+This project currently has **no database**. Configuration is stored as a JSON file (`clawd-config.json`) in the Electron userData directory. A SQLite-backed blackboard store is planned for multi-agent coordination (see `05-18-sqlite-blackboard-shared-store` task).
 
 ---
 
-## Query Patterns
+## Current Storage Pattern
 
-<!-- How should queries be written? Batch operations? -->
+**JSON file config store** (`src/config/config-store.ts`):
 
-(To be filled by the team)
+```typescript
+// Synchronous read
+export function readConfig(): AppConfig {
+  // fs.readFileSync -> JSON.parse
+}
+
+// Synchronous write
+export function writeConfig(config: AppConfig): void {
+  // JSON.stringify -> fs.writeFileSync
+}
+
+// Merge update
+export function updateLLMConfig(llm: Partial<LLMConfig>): AppConfig {
+  const current = readConfig();
+  const updated = { ...current, llm: { ...current.llm, ...llm } };
+  writeConfig(updated);
+  return updated;
+}
+```
+
+**Location**: `app.getPath('userData')/clawd-config.json` (main process) or `process.env.CLAWD_USER_DATA/clawd-config.json` (utility process).
 
 ---
 
-## Migrations
+## Adding New Storage
 
-<!-- How to create and run migrations -->
+When adding SQLite (or any database):
 
-(To be filled by the team)
-
----
-
-## Naming Conventions
-
-<!-- Table names, column names, index names -->
-
-(To be filled by the team)
+- Place storage modules in `src/storage/` (new directory)
+- Keep sync read/write pattern for simple cases; use async for DB operations
+- Namespace data by context (e.g., per-pet isolation for multi-agent)
+- Add corresponding types to `src/shared/types.ts`
 
 ---
 
 ## Common Mistakes
 
-<!-- Database-related mistakes your team has made -->
-
-(To be filled by the team)
+- Don't store secrets in plain JSON — use Electron's `safeStorage` API for sensitive data
+- Don't assume `app.getPath()` is available in utility processes — use `process.env.CLAWD_USER_DATA`
