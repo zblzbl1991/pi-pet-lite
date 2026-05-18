@@ -1,3 +1,4 @@
-{"id":"_example","spec":"prd.md","role":"spec","notes":"acceptance criteria and definition of done"}
-{"id":"research_eval","spec":"research/agent-browser-evaluation.md","role":"context","notes":"verify CLI commands match PRD action mapping"}
-{"id":"research_cdp","spec":"research/current-cdp-usage.md","role":"context","notes":"verify no Playwright references remain in browser.ts"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error handling matches project patterns"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality verification for browser migration"}
+{"file": ".trellis/tasks/05-18-agent-browser-migration/research/agent-browser-evaluation.md", "reason": "Verify CLI commands match PRD action mapping"}
+{"file": ".trellis/tasks/05-18-agent-browser-migration/research/current-cdp-usage.md", "reason": "Verify no Playwright references remain in browser.ts"}

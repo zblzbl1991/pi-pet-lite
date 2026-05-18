@@ -3,7 +3,7 @@
   "name": "agent-browser-migration",
   "title": "Migrate browser automation from Playwright to agent-browser CLI",
   "description": "Replace Playwright's in-process CDP page operations with agent-browser CLI (Vercel Labs). Retain browser-launch.ts for Chrome discovery and CDP startup.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "src/agent/tools/browser.ts",
   "package": null,

@@ -1,3 +1,5 @@
-{"id":"_example","spec":"research/agent-browser-evaluation.md","role":"context","notes":"agent-browser features, CLI API, architecture analysis"}
-{"id":"_example_2","spec":"research/current-cdp-usage.md","role":"context","notes":"current Playwright+CDP integration, files, limitations"}
-{"id":"prd","spec":"prd.md","role":"spec","notes":"full migration PRD with grill decisions and architecture"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "New agent-browser-client.ts module must follow project directory conventions"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Browser tool error handling must match project error patterns"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality bar for browser tool rewrite"}
+{"file": ".trellis/tasks/05-18-agent-browser-migration/research/agent-browser-evaluation.md", "reason": "agent-browser CLI features, API, architecture analysis"}
+{"file": ".trellis/tasks/05-18-agent-browser-migration/research/current-cdp-usage.md", "reason": "Current Playwright+CDP integration details for migration reference"}
