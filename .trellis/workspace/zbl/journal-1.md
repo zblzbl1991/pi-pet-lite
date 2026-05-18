@@ -111,3 +111,38 @@ Add BrowserConfig (chromePath + cdpPort) to AppConfig with hot-reload. Browser t
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: M1-M6 milestones + browser migration + spec bootstrap
+
+**Date**: 2026-05-19
+**Task**: M1-M6 milestones + browser migration + spec bootstrap
+**Branch**: `master`
+
+### Summary
+
+Completed all 8 tasks: bootstrap project spec guidelines (11 files), tool experience failure tracking (M1), agent profile configuration (M2), SQLite blackboard shared store (M3), multi-pet manager (M4), chief coordinator with delegation (M5), multi-pet UI with distinct visuals (M6), and migrated browser automation from Playwright to agent-browser CLI. Typecheck and build pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0c14bc8` | (see git log) |
+| `7203846` | (see git log) |
+| `e1c34dd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

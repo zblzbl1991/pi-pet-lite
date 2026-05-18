@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
-- **Last Active**: 2026-05-18
+- **Total Sessions**: 4
+- **Last Active**: 2026-05-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~113 | Active |
+| `journal-1.md` | ~148 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-05-19 | M1-M6 milestones + browser migration + spec bootstrap | `0c14bc8`, `7203846`, `e1c34dd` | `master` |
 | 3 | 2026-05-18 | Chrome CDP bridge config + settings sidebar redesign | `dfe9d96` | `master` |
 | 2 | 2026-05-16 | Quick input bubble + right-click chat interaction | `8226fb6` | `master` |
 | 1 | 2026-05-15 | Clawd Desktop Pet Agent - Full Implementation (PR1-PR6 + fixes) | `f5fd5bf`, `4bfcacc`, `6c7f42e`, `fb7272f`, `2188af1`, `74e9c7c`, `a7e7ae1`, `83e78e4` | `master` |
