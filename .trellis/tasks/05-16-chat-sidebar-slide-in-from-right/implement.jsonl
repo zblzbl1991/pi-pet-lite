@@ -1,0 +1,7 @@
+{"file": "src/main/windows.ts", "reason": "Primary file — createChatWindow() needs frameless, skipTaskbar, right-edge positioning, hide/show lifecycle"}
+{"file": "src/main/main.ts", "reason": "Remove computeChatPosition(), update IPC_OPEN_CHAT and confirmation-request handlers, add slide IPC routing"}
+{"file": "src/renderer/chat/ChatPanel.tsx", "reason": "Add slide-in/slide-out CSS animation, close button, border-left, draggable header"}
+{"file": "src/renderer/chat/index.html", "reason": "May need animation keyframes or base CSS for slide transitions"}
+{"file": "src/shared/constants.ts", "reason": "Remove CHAT_WINDOW_HEIGHT, add new IPC channel constants"}
+{"file": "src/shared/types.ts", "reason": "Add new IPC channel types for slide-in/slide-out communication"}
+{"file": "src/preload/chat-preload.ts", "reason": "Expose new IPC channels (chat:slide-in, chat:slide-out, chat:slide-out-complete) to renderer"}

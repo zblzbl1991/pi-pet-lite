@@ -1,0 +1,5 @@
+{"file": "src/main/windows.ts", "reason": "Verify frame:false, skipTaskbar:true, right-edge position, hide/show lifecycle, close event interception"}
+{"file": "src/main/main.ts", "reason": "Verify computeChatPosition removed, slide IPC handlers wired correctly, no dead references"}
+{"file": "src/renderer/chat/ChatPanel.tsx", "reason": "Verify slide animation CSS (transform/transition), close button, border-left, draggable header, IPC listeners"}
+{"file": "src/shared/constants.ts", "reason": "Verify CHAT_WINDOW_HEIGHT removed, new IPC constants added"}
+{"file": "src/preload/chat-preload.ts", "reason": "Verify new IPC channels exposed to renderer"}
