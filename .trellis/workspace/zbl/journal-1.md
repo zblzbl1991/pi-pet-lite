@@ -78,3 +78,36 @@ Added left-click quick input bubble (320x48 transparent BrowserWindow above pet)
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Chrome CDP bridge config + settings sidebar redesign
+
+**Date**: 2026-05-18
+**Task**: Chrome CDP bridge config + settings sidebar redesign
+**Branch**: `master`
+
+### Summary
+
+Add BrowserConfig (chromePath + cdpPort) to AppConfig with hot-reload. Browser tools detect port changes and reconnect. Settings window redesigned with sidebar navigation (LLM/Browser/Notifications) at 680x520. Browser section includes path validation, port range check, and test connection button.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dfe9d96` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
