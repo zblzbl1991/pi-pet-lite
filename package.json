@@ -16,14 +16,15 @@
     "postinstall": "node scripts/generate-icon.js"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-agent-core": "^0.74.0",
+    "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
+    "better-sqlite3": "^12.10.0",
     "node-cron": "^3.0.3",
-    "playwright": "^1.52.0",
     "typebox": "^1.1.24"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node-cron": "^3.0.11",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
@@ -52,13 +53,16 @@
       "!dist/agent/**/*.map",
       "!dist/preload/**/*.map",
       "!dist/shared/**/*.map",
-      "!dist/config/**/*.map"
+      "!dist/config/**/*.map",
+      "!dist/storage/**/*.map"
     ],
     "extraResources": [
       {
         "from": "clawd-gifs",
         "to": "clawd-gifs",
-        "filter": ["**/*.gif"]
+        "filter": [
+          "**/*.gif"
+        ]
       }
     ],
     "asar": true,
@@ -66,7 +70,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico",

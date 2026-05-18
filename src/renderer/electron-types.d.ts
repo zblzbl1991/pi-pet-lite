@@ -13,6 +13,8 @@ import type {
   PetElectronAPI,
   ChatElectronAPI,
   QuickInputElectronAPI,
+  PetConfig,
+  PetStatusUpdateData,
 } from '../shared/types';
 
 /**

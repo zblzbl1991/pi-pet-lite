@@ -9,7 +9,6 @@ import {
 import path from 'path';
 import { pathToFileURL } from 'url';
 import {
-  createPetWindow,
   createSettingsWindow,
   createChatWindow,
   showChatWindow,
@@ -21,6 +20,7 @@ import {
   closeQuickInputWindow,
   getQuickInputHtmlPath,
 } from './windows';
+import { PetWindowManager } from './pet-window-manager';
 import { createTray } from './tray';
 import {
   IPC_AGENT_MESSAGE,
@@ -34,6 +34,7 @@ import {
   MESSAGE_BUFFER_MAX,
 } from '../shared/constants';
 import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig } from '../config/config-store';
+import { registerBlackboardIpcHandlers } from './blackboard-ipc';
 import { MessageRole } from '../shared/types';
 import type {
   LLMConfig,
@@ -45,8 +46,10 @@ import type {
   AgentToRendererMessage,
   RendererToAgentMessage,
 } from '../shared/types';
+import { getDefaultProfile, getProfileById } from '../agent/profiles';
 
-let petWindow: BrowserWindow | null = null;
+// PetWindowManager handles all pet BrowserWindows (replaces single petWindow)
+let petWindowManager: PetWindowManager | null = null;
 
 // Message buffer for ChatWindow history sync
 const messageBuffer: ChatEntry[] = [];
@@ -102,9 +105,11 @@ function updateBufferToolCard(toolCallId: string, updates: Partial<ToolCardEntry
 }
 
 function broadcastToWindows(msg: AgentToRendererMessage): void {
-  if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.webContents.send(IPC_AGENT_MESSAGE, msg);
+  // Broadcast to all pet windows via PetWindowManager
+  if (petWindowManager) {
+    petWindowManager.broadcastToAll(msg);
   }
+  // Also broadcast to chat window
   const chatWin = getChatWindow();
   if (chatWin) {
     chatWin.webContents.send(IPC_AGENT_MESSAGE, msg);
@@ -182,7 +187,7 @@ function getAgentEntryPath(): string {
 }
 
 /**
- * Compute quick input window position above the pet.
+ * Compute quick input window position above the chief pet.
  * Centers the 320px-wide bubble horizontally above the pet.
  * Clamps to screen edges.
  */
@@ -225,12 +230,19 @@ function bootstrap(): void {
   app.whenReady().then(() => {
     const gifsPath = getGifsBasePath();
 
-    // Create the pet overlay window
-    petWindow = createPetWindow(getRendererPath(), getPreloadPath());
+    // Initialize Blackboard store and register IPC handlers
+    registerBlackboardIpcHandlers();
 
-    const rendererUrl = pathToFileURL(getRendererPath());
-    rendererUrl.searchParams.set('gifsPath', gifsPath);
-    petWindow.loadURL(rendererUrl.toString());
+    // Create PetWindowManager for multi-pet support
+    petWindowManager = new PetWindowManager(
+      getRendererPath(),
+      getPreloadPath(),
+      gifsPath
+    );
+
+    // Spawn the Chief pet window on startup
+    const chiefProfile = getDefaultProfile();
+    petWindowManager.spawnPet(chiefProfile);
 
     // Create system tray
     createTray(
@@ -240,29 +252,26 @@ function bootstrap(): void {
         createSettingsWindow(settingsHtmlPath, settingsPreloadPath);
       },
       () => {
-        if (petWindow) {
-          if (petWindow.isVisible()) {
-            petWindow.hide();
-          } else {
-            petWindow.show();
-          }
-        }
+        // Toggle visibility of all pet windows
+        petWindowManager?.toggleVisibility();
       },
       () => {
-        if (petWindow && !petWindow.isDestroyed()) {
-          petWindow.webContents.openDevTools({ mode: 'detach' });
+        // Open DevTools for the chief pet window
+        const chiefWin = petWindowManager?.getChiefWindow();
+        if (chiefWin) {
+          chiefWin.webContents.openDevTools({ mode: 'detach' });
         }
       }
     );
 
-    // ---- Message routing: Agent ←MessagePort→ Main →IPC→ Windows ----
+    // ---- Message routing: Agent <-MessagePort-> Main ->IPC-> Windows ----
     const { port1: mainPort, port2: agentPort } = new MessageChannelMain();
 
-    // Launch agent utility process
+    // Launch agent utility process (multi-pet mode)
     const agentProc = utilityProcess.fork(getAgentEntryPath(), [], {
       env: { ...process.env, CLAWD_USER_DATA: app.getPath('userData') },
     });
-    agentProc.postMessage({ type: 'init' }, [agentPort]);
+    agentProc.postMessage({ type: 'init-multi-pet' }, [agentPort]);
 
     // Main process keeps port1: listen for agent messages
     mainPort.on('message', (event: unknown) => {
@@ -317,11 +326,31 @@ function bootstrap(): void {
       // Broadcast to all windows via IPC
       broadcastToWindows(msg);
 
+      // Handle pet-status messages: route to correct pet window and spawn/despawn as needed
+      if (msg.type === 'pet-status' && petWindowManager) {
+        const { petId, status } = msg;
+
+        if (status === 'offline') {
+          // Pet was disposed: despawn its window (but never despawn chief)
+          if (petId !== 'chief') {
+            petWindowManager.despawnPet(petId);
+          }
+        } else {
+          // Pet is active: ensure it has a window, then update status
+          const profile = getProfileById(petId);
+          if (profile) {
+            petWindowManager.spawnPet(profile);
+          }
+          petWindowManager.updatePetStatus(petId, status);
+        }
+      }
+
       // Auto-show ChatWindow for confirmation requests
       if (msg.type === 'confirmation-request') {
         let chatWin = getChatWindow();
-        const petPt = petWindow && !petWindow.isDestroyed()
-          ? (() => { const [x, y] = petWindow.getPosition(); return { x: x + 80, y: y + 80 }; })()
+        const chiefPos = petWindowManager?.getChiefPosition();
+        const petPt = chiefPos
+          ? { x: chiefPos.x + 80, y: chiefPos.y + 80 }
           : undefined;
         if (!chatWin) {
           const chatHtmlPath = getChatHtmlPath();
@@ -345,7 +374,7 @@ function bootstrap(): void {
     });
     mainPort.start();
 
-    // Handle messages from renderers → forward to agent
+    // Handle messages from renderers -> forward to agent
     ipcMain.on(
       IPC_RENDERER_TO_AGENT,
       (_event: Electron.IpcMainEvent, msg: RendererToAgentMessage) => {
@@ -377,8 +406,9 @@ function bootstrap(): void {
     // ---- Open chat sidebar ----
     ipcMain.on(IPC_OPEN_CHAT, () => {
       let chatWin = getChatWindow();
-      const petPt = petWindow && !petWindow.isDestroyed()
-        ? (() => { const [x, y] = petWindow.getPosition(); return { x: x + 80, y: y + 80 }; })()
+      const chiefPos = petWindowManager?.getChiefPosition();
+      const petPt = chiefPos
+        ? { x: chiefPos.x + 80, y: chiefPos.y + 80 }
         : undefined;
       if (!chatWin) {
         const chatHtmlPath = getChatHtmlPath();
@@ -393,12 +423,12 @@ function bootstrap(): void {
       }
     });
 
-    // ---- Chat sidebar slide-out complete → hide window ----
+    // ---- Chat sidebar slide-out complete -> hide window ----
     ipcMain.on(IPC_CHAT_SLIDE_OUT_COMPLETE, () => {
       forceHideChatWindow();
     });
 
-    // ---- Close chat from renderer (X button) → trigger slide-out ----
+    // ---- Close chat from renderer (X button) -> trigger slide-out ----
     ipcMain.on('close-chat', () => {
       const chatWin = getChatWindow();
       if (chatWin) {
@@ -408,9 +438,10 @@ function bootstrap(): void {
 
     // ---- Open quick input bubble ----
     ipcMain.on(IPC_OPEN_QUICK_INPUT, () => {
-      if (!petWindow || petWindow.isDestroyed()) return;
+      const chiefWin = petWindowManager?.getChiefWindow();
+      if (!chiefWin) return;
 
-      const [px, py] = petWindow.getPosition();
+      const [px, py] = chiefWin.getPosition();
       const position = computeQuickInputPosition(px, py, 160, 160);
       const qiHtmlPath = getQuickInputHtmlPath();
       const qiPreloadPath = getQuickInputPreloadPath();
@@ -454,8 +485,10 @@ function bootstrap(): void {
     ipcMain.on(
       'set-ignore-mouse-events',
       (_event: Electron.IpcMainEvent, ignore: boolean) => {
-        if (petWindow) {
-          petWindow.setIgnoreMouseEvents(ignore, { forward: true });
+        // Route to the chief pet window
+        const chiefWin = petWindowManager?.getChiefWindow();
+        if (chiefWin) {
+          chiefWin.setIgnoreMouseEvents(ignore, { forward: true });
         }
       }
     );
@@ -464,13 +497,14 @@ function bootstrap(): void {
     ipcMain.on(
       'pet-drag-start',
       (_event: Electron.IpcMainEvent, offset: { x: number; y: number }) => {
-        if (!petWindow || dragInterval) return;
+        const chiefWin = petWindowManager?.getChiefWindow();
+        if (!chiefWin || dragInterval) return;
         dragOffset = offset;
         dragInterval = setInterval(() => {
           try {
-            if (!petWindow || petWindow.isDestroyed() || !dragOffset) return;
+            if (!chiefWin || chiefWin.isDestroyed() || !dragOffset) return;
             const cursor = screen.getCursorScreenPoint();
-            petWindow.setPosition(
+            chiefWin.setPosition(
               Math.round(cursor.x - dragOffset.x),
               Math.round(cursor.y - dragOffset.y)
             );
@@ -496,16 +530,18 @@ function bootstrap(): void {
     ipcMain.on(
       'move-window',
       (_event: Electron.IpcMainEvent, deltaX: number, deltaY: number) => {
-        if (petWindow) {
-          const [currentX, currentY] = petWindow.getPosition();
-          petWindow.setPosition(currentX + deltaX, currentY + deltaY);
+        const chiefWin = petWindowManager?.getChiefWindow();
+        if (chiefWin) {
+          const [currentX, currentY] = chiefWin.getPosition();
+          chiefWin.setPosition(currentX + deltaX, currentY + deltaY);
         }
       }
     );
 
     ipcMain.handle('get-window-position', (): { x: number; y: number } => {
-      if (petWindow) {
-        const [x, y] = petWindow.getPosition();
+      const chiefWin = petWindowManager?.getChiefWindow();
+      if (chiefWin) {
+        const [x, y] = chiefWin.getPosition();
         return { x, y };
       }
       return { x: 0, y: 0 };

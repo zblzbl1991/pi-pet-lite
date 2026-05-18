@@ -82,6 +82,50 @@ export const TrustLevel = {
 
 export type TrustLevel = (typeof TrustLevel)[keyof typeof TrustLevel];
 
+/** Pet profile role identifiers */
+export const PetRole = {
+  CHIEF: 'chief',
+  CODER: 'coder',
+  SCOUT: 'scout',
+  ANALYST: 'analyst',
+} as const;
+
+export type PetRole = (typeof PetRole)[keyof typeof PetRole];
+
+/** Pet agent status (managed by PetManager) */
+export const PetStatus = {
+  OFFLINE: 'offline',
+  IDLE: 'idle',
+  BUSY: 'busy',
+  ERROR: 'error',
+} as const;
+
+export type PetStatus = (typeof PetStatus)[keyof typeof PetStatus];
+
+/** Profile-driven agent configuration.
+ *  Each pet gets a differentiated identity, tool set, and behavior
+ *  from a declarative profile config. */
+export interface PetProfile {
+  /** Unique profile identifier, e.g. "chief", "coder" */
+  id: string;
+  /** Display name, e.g. "Chief" */
+  name: string;
+  /** Role determines the profile's specialization */
+  role: PetRole;
+  /** System prompt template for this profile */
+  systemPrompt: string;
+  /** Allowlist of tool names this profile can use */
+  toolNames: string[];
+  /** Per-tool trust level overrides (merges over global TRUST_POLICY) */
+  trustOverrides?: Partial<Record<string, TrustLevel>>;
+  /** Optional LLM config overrides (falls back to global config) */
+  llm?: Partial<LLMConfig>;
+  /** Reserved for future M15 skill L1/L2 progressive disclosure */
+  skills?: string[];
+  /** Pet icon or GIF name for this profile */
+  icon?: string;
+}
+
 /** Thinking level for agent reasoning */
 export const ThinkingLevel = {
   OFF: 'off',
@@ -125,7 +169,10 @@ export interface AppConfig {
 export type RendererToAgentMessage =
   | { type: 'user-input'; text: string }
   | { type: 'ping' }
-  | { type: 'confirmation-response'; toolCallId: string; approved: boolean };
+  | { type: 'confirmation-response'; toolCallId: string; approved: boolean }
+  | { type: 'pet-delegate'; petId: string; prompt: string }
+  | { type: 'pet-abort'; petId: string }
+  | { type: 'pet-status-request' };
 
 /** Messages sent from agent to renderer via MessagePort */
 export type AgentToRendererMessage =
@@ -138,7 +185,19 @@ export type AgentToRendererMessage =
   | { type: 'tool-execution'; toolCallId: string; toolName: string; status: 'running' | 'done' | 'error'; args?: Record<string, unknown>; partialResult?: string; result?: string; duration?: number }
   | { type: 'chat-thinking'; id: string; delta: string }
   | { type: 'turn-indicator'; turn: number; event: 'start' | 'end' }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'pet-status'; petId: string; status: PetStatus }
+  | { type: 'pet-statuses'; statuses: PetStatusReportMessage[] };
+
+/** Pet status report for IPC communication */
+export interface PetStatusReportMessage {
+  petId: string;
+  status: PetStatus;
+  queueLength: number;
+  successCount: number;
+  errorCount: number;
+  lastActivity: number;
+}
 
 /** IPC channels between main process and renderer */
 export interface MainIPCChannels {
@@ -160,6 +219,28 @@ export interface PetElectronAPI {
   sendToAgent: (msg: RendererToAgentMessage) => void;
   petDragStart: (offset: { x: number; y: number }) => void;
   petDragEnd: () => void;
+  /** Listen for pet status updates from main process */
+  onPetStatusUpdate: (callback: (data: PetStatusUpdateData) => void) => () => void;
+  /** Get this pet's identity (petId, name, role, roleColor, interactive) */
+  getPetConfig: () => PetConfig;
+  /** Show a tooltip for non-interactive pets */
+  showPetTooltip: (text: string) => void;
+}
+
+/** Pet identity configuration passed from main to renderer via preload */
+export interface PetConfig {
+  petId: string;
+  petName: string;
+  petRole: PetRole;
+  roleColor: string;
+  interactive: boolean;
+}
+
+/** Pet status update data sent via IPC */
+export interface PetStatusUpdateData {
+  petId: string;
+  status: PetStatus;
+  animation: string;
 }
 
 /** Exposed via contextBridge in quick-input preload */
@@ -177,4 +258,31 @@ export interface ChatElectronAPI {
   onSlideOut: (callback: () => void) => () => void;
   slideOutComplete: () => void;
   closeChat: () => void;
+}
+
+// ---- Blackboard Store Types ----
+
+/** A single entry from the blackboard store */
+export interface BlackboardEntryItem {
+  key: string;
+  value: string;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number | null;
+}
+
+/** IPC response wrapper for blackboard operations */
+export interface BlackboardResponse<T> {
+  success: boolean;
+  error?: string;
+  data?: T;
+}
+
+/** IPC API surface exposed to renderer for blackboard operations */
+export interface BlackboardIPC {
+  get(namespace: string, key: string): Promise<BlackboardResponse<BlackboardEntryItem | null>>;
+  set(namespace: string, key: string, value: string, ttlMs?: number): Promise<BlackboardResponse<void>>;
+  delete(namespace: string, key: string): Promise<BlackboardResponse<boolean>>;
+  list(namespace: string, prefix?: string): Promise<BlackboardResponse<BlackboardEntryItem[]>>;
+  query(namespace: string, filter: Record<string, unknown>): Promise<BlackboardResponse<BlackboardEntryItem[]>>;
 }

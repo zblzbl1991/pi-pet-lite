@@ -2,23 +2,44 @@
  * Browser automation tool for the Clawd agent.
  *
  * Connects to the user's existing Chrome or Edge browser via CDP
- * (Chrome DevTools Protocol) using Playwright. No browser binary
- * is bundled; the tool reuses the browser already installed on the system.
+ * using agent-browser CLI (vercel-labs). The browser is launched with
+ * --remote-debugging-port by browser-launch.ts; agent-browser daemon
+ * connects to that CDP endpoint.
  *
  * Provides a single `browser_action` tool with sub-actions:
- *   - navigate: Go to a URL
- *   - click: Click an element by CSS selector or text
- *   - type: Type text into an input field
+ *   - snapshot: Get accessibility tree with element refs (new)
+ *   - open: Navigate to a URL
+ *   - click: Click an element by ref
+ *   - type: Type text into an element by ref
  *   - screenshot: Capture a screenshot as base64
- *   - get_content: Get text content of the page or a specific element
+ *   - get_text: Get text content of the page
+ *   - scroll: Scroll the page up or down (new)
+ *   - hover: Hover over an element by ref (new)
  *   - go_back / go_forward: Browser history navigation
  *
+ * Selector model: Agent calls `snapshot` first to discover elements and
+ * their refs (@e1, @e2, ...), then uses those refs for click/type/hover.
+ *
  * Trust level: CONFIRM_STEP (each action needs user confirmation).
- * Uses dynamic import() for Playwright (ESM-only in recent versions).
  */
 
 import { Type } from 'typebox';
 import { findBrowserPath, launchBrowserWithCDP } from './browser-launch';
+import {
+  ensureDaemonConnected,
+  shutdownDaemon,
+  markDaemonDisconnected,
+  openUrl,
+  snapshot,
+  clickElement,
+  fillElement,
+  screenshot as takeScreenshot,
+  getText,
+  scroll as scrollPage,
+  hoverElement,
+  goBack,
+  goForward,
+} from './agent-browser-client';
 import { readConfig } from '../../config/config-store';
 
 // ---------------------------------------------------------------------------
@@ -29,69 +50,89 @@ type PiAgentToolResult = import('@earendil-works/pi-agent-core').AgentToolResult
 type PiAgentToolUpdateCallback = import('@earendil-works/pi-agent-core').AgentToolUpdateCallback<unknown>;
 
 // ---------------------------------------------------------------------------
-// Playwright types (resolved at runtime via dynamic import)
+// Connection state
 // ---------------------------------------------------------------------------
-type PlaywrightBrowser = import('playwright').Browser;
-type PlaywrightBrowserContext = import('playwright').BrowserContext;
-type PlaywrightPage = import('playwright').Page;
-
-// ---------------------------------------------------------------------------
-// Singleton browser connection
-// ---------------------------------------------------------------------------
-let browserConnection: PlaywrightBrowser | null = null;
+let connectionAttempted = false;
 let lastCdpPort: number | null = null;
-let playwrightModule: typeof import('playwright') | null = null;
 
-/**
- * Dynamically import Playwright (ESM-only in recent versions).
- * Caches the module reference after first import.
- */
-async function loadPlaywright(): Promise<typeof import('playwright')> {
-  if (!playwrightModule) {
-    playwrightModule = await import('playwright');
-  }
-  return playwrightModule;
+// ---------------------------------------------------------------------------
+// Helper: build result objects
+// ---------------------------------------------------------------------------
+function textResult(text: string, details?: Record<string, unknown>): PiAgentToolResult {
+  return {
+    content: [{ type: 'text' as const, text }],
+    details: details ?? {},
+  };
 }
 
+function errorResult(message: string, details?: Record<string, unknown>): PiAgentToolResult {
+  return {
+    content: [{ type: 'text' as const, text: message }],
+    details: { error: true, ...details },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Action type
+// ---------------------------------------------------------------------------
+
+const BROWSER_ACTIONS = [
+  'snapshot',
+  'open',
+  'click',
+  'type',
+  'screenshot',
+  'get_text',
+  'scroll',
+  'hover',
+  'go_back',
+  'go_forward',
+] as const;
+
+type BrowserAction = (typeof BROWSER_ACTIONS)[number];
+
+interface BrowserActionParams {
+  action: BrowserAction;
+  url?: string;
+  ref?: string;
+  text?: string;
+  direction?: 'up' | 'down';
+}
+
+// ---------------------------------------------------------------------------
+// Connection management
+// ---------------------------------------------------------------------------
+
 /**
- * Get or establish a CDP connection to the user's browser.
+ * Ensure browser is launched and agent-browser daemon is connected.
  *
  * Strategy:
- * 1. Reuse existing connection if still alive.
- * 2. Try connecting to an already-running browser on the CDP port.
+ * 1. If daemon is already connected on the right port, return immediately.
+ * 2. Try connecting the daemon to an already-running browser on the CDP port.
  * 3. If nothing is listening, find and launch Chrome/Edge with CDP,
- *    then connect.
- *
- * Returns the connected Browser instance.
+ *    then connect the daemon.
  */
-async function getOrConnectBrowser(): Promise<PlaywrightBrowser> {
+async function ensureBrowserReady(signal?: AbortSignal): Promise<number> {
   const config = readConfig();
   const cdpPort = config.browser?.cdpPort || 9222;
   const configuredChromePath = config.browser?.chromePath || undefined;
 
-  // Reuse existing connection if still connected AND port hasn't changed
-  if (browserConnection && browserConnection.isConnected() && lastCdpPort === cdpPort) {
-    return browserConnection;
+  // Port changed -- mark daemon disconnected so we reconnect
+  if (lastCdpPort !== null && lastCdpPort !== cdpPort) {
+    markDaemonDisconnected();
   }
-
-  // Port changed — discard stale reference (do NOT close: that would kill the user's browser)
-  browserConnection = null;
   lastCdpPort = cdpPort;
 
-  const pw = await loadPlaywright();
-
-  // Try connecting to a browser already listening on the CDP port
+  // Try connecting daemon to CDP port
   try {
-    browserConnection = await pw.chromium.connectOverCDP(
-      `http://localhost:${cdpPort}`
-    );
-    // Handle disconnection (user closed browser)
-    browserConnection.on('disconnected', () => {
-      browserConnection = null;
-    });
-    return browserConnection;
+    await ensureDaemonConnected(cdpPort);
+    return cdpPort;
   } catch {
-    // No browser listening on CDP port - will try launching one below
+    // Daemon couldn't connect -- maybe no browser is running on that port
+  }
+
+  if (signal?.aborted) {
+    throw new Error('Browser connection aborted.');
   }
 
   // Find a browser on the system
@@ -114,93 +155,59 @@ async function getOrConnectBrowser(): Promise<PlaywrightBrowser> {
     );
   }
 
-  // Connect to the newly launched browser
-  browserConnection = await pw.chromium.connectOverCDP(
-    `http://localhost:${cdpPort}`
-  );
-
-  // Handle disconnection (user closed browser)
-  browserConnection.on('disconnected', () => {
-    browserConnection = null;
-  });
-
-  return browserConnection;
-}
-
-/**
- * Get a page to operate on.
- *
- * If connected to a user's browser, uses the first context's first page.
- * If no pages exist, creates a new one. Does not close existing tabs.
- */
-async function getOrCreatePage(browser: PlaywrightBrowser): Promise<PlaywrightPage> {
-  const contexts = browser.contexts();
-  if (contexts.length > 0) {
-    const context: PlaywrightBrowserContext = contexts[0];
-    const pages = context.pages();
-    if (pages.length > 0) {
-      return pages[0];
-    }
-    return await context.newPage();
-  }
-  // Should not happen with CDP connections (always at least one context),
-  // but handle gracefully.
-  const context = await browser.newContext();
-  return await context.newPage();
-}
-
-// ---------------------------------------------------------------------------
-// Helper: build result objects
-// ---------------------------------------------------------------------------
-function textResult(text: string, details?: Record<string, unknown>): PiAgentToolResult {
-  return {
-    content: [{ type: 'text' as const, text }],
-    details: details ?? {},
-  };
-}
-
-function errorResult(message: string, details?: Record<string, unknown>): PiAgentToolResult {
-  return {
-    content: [{ type: 'text' as const, text: message }],
-    details: { error: true, ...details },
-  };
+  // Now connect the daemon to the newly launched browser
+  await ensureDaemonConnected(cdpPort);
+  connectionAttempted = true;
+  return cdpPort;
 }
 
 // ---------------------------------------------------------------------------
 // Action handlers
 // ---------------------------------------------------------------------------
 
-interface BrowserActionParams {
-  action: 'navigate' | 'click' | 'type' | 'screenshot' | 'get_content' | 'go_back' | 'go_forward';
-  url?: string;
-  selector?: string;
-  text?: string;
-  selector_type?: 'css' | 'text';
+/**
+ * Handle the 'snapshot' action.
+ * Returns the accessibility tree with element refs.
+ */
+async function handleSnapshot(
+  signal?: AbortSignal
+): Promise<PiAgentToolResult> {
+  try {
+    const result = await snapshot({ signal });
+    const refCount = Object.keys(result.refs).length;
+    return textResult(
+      `Page snapshot captured. Found ${refCount} interactive elements.\n\n` +
+      `Accessibility tree:\n${result.snapshot}\n\n` +
+      `Element refs: ${Object.entries(result.refs)
+        .map(([ref, el]) => `${ref}: [${el.role}] "${el.name}"`)
+        .join('\n')}`,
+      { refCount, refs: result.refs }
+    );
+  } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Snapshot aborted by user.');
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    return errorResult(`Failed to take snapshot: ${message}`);
+  }
 }
 
 /**
- * Handle the 'navigate' action.
+ * Handle the 'open' action (navigate to URL).
  */
-async function handleNavigate(
-  page: PlaywrightPage,
+async function handleOpen(
   params: BrowserActionParams,
   signal?: AbortSignal
 ): Promise<PiAgentToolResult> {
   if (!params.url) {
-    return errorResult('The "url" parameter is required for the navigate action.');
+    return errorResult('The "url" parameter is required for the open action.');
   }
 
   try {
-    const response = await page.goto(params.url, {
-      timeout: 30000,
-      waitUntil: 'domcontentloaded',
-    });
-    const httpStatus = response?.status();
-    const finalUrl = page.url();
-    const statusLabel = httpStatus !== undefined ? String(httpStatus) : 'unknown';
+    const result = await openUrl(params.url, { signal });
     return textResult(
-      `Navigated to ${finalUrl} (HTTP ${statusLabel}).`,
-      { url: finalUrl, httpStatus: httpStatus ?? null }
+      `Navigated to ${params.url}.`,
+      { url: params.url, success: result.success }
     );
   } catch (err: unknown) {
     if (signal?.aborted) {
@@ -213,62 +220,64 @@ async function handleNavigate(
 
 /**
  * Handle the 'click' action.
+ * Uses element ref from a previous snapshot.
  */
 async function handleClick(
-  page: PlaywrightPage,
-  params: BrowserActionParams
+  params: BrowserActionParams,
+  signal?: AbortSignal
 ): Promise<PiAgentToolResult> {
-  if (!params.selector) {
-    return errorResult('The "selector" parameter is required for the click action.');
+  if (!params.ref) {
+    return errorResult(
+      'The "ref" parameter is required for the click action. ' +
+      'Call "snapshot" first to discover element refs (e.g., "@e3").'
+    );
   }
 
   try {
-    const locator = params.selector_type === 'text'
-      ? page.getByText(params.selector, { exact: false })
-      : page.locator(params.selector);
-
-    await locator.first().click({ timeout: 10000 });
+    const result = await clickElement(params.ref, { signal });
     return textResult(
-      `Clicked element: "${params.selector}".`,
-      { selector: params.selector, selector_type: params.selector_type ?? 'css' }
+      `Clicked element ${params.ref}.`,
+      { ref: params.ref, success: result.success }
     );
   } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Click aborted by user.');
+    }
     const message = err instanceof Error ? err.message : String(err);
-    return errorResult(`Failed to click "${params.selector}": ${message}`);
+    return errorResult(`Failed to click ${params.ref}: ${message}`);
   }
 }
 
 /**
  * Handle the 'type' action.
+ * Uses element ref from a previous snapshot.
  */
 async function handleType(
-  page: PlaywrightPage,
-  params: BrowserActionParams
+  params: BrowserActionParams,
+  signal?: AbortSignal
 ): Promise<PiAgentToolResult> {
-  if (!params.selector) {
-    return errorResult('The "selector" parameter is required for the type action.');
+  if (!params.ref) {
+    return errorResult(
+      'The "ref" parameter is required for the type action. ' +
+      'Call "snapshot" first to discover element refs (e.g., "@e5").'
+    );
   }
   if (params.text === undefined || params.text === null) {
     return errorResult('The "text" parameter is required for the type action.');
   }
 
   try {
-    const locator = params.selector_type === 'text'
-      ? page.getByText(params.selector, { exact: false })
-      : page.locator(params.selector);
-
-    // Click to focus, then clear existing content and type
-    await locator.first().click({ timeout: 10000 });
-    await locator.first().fill('');
-    await locator.first().fill(params.text);
-
+    const result = await fillElement(params.ref, params.text, { signal });
     return textResult(
-      `Typed text into element: "${params.selector}".`,
-      { selector: params.selector, text_length: params.text.length }
+      `Typed text into element ${params.ref}.`,
+      { ref: params.ref, text_length: params.text.length, success: result.success }
     );
   } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Type action aborted by user.');
+    }
     const message = err instanceof Error ? err.message : String(err);
-    return errorResult(`Failed to type into "${params.selector}": ${message}`);
+    return errorResult(`Failed to type into ${params.ref}: ${message}`);
   }
 }
 
@@ -277,11 +286,13 @@ async function handleType(
  * Returns a base64-encoded PNG image as ImageContent.
  */
 async function handleScreenshot(
-  page: PlaywrightPage
+  signal?: AbortSignal
 ): Promise<PiAgentToolResult> {
   try {
-    const buffer = await page.screenshot({ type: 'png', fullPage: false });
-    const base64 = buffer.toString('base64');
+    const base64 = await takeScreenshot({ signal });
+    if (!base64) {
+      return errorResult('Screenshot returned empty data.');
+    }
 
     return {
       content: [
@@ -291,66 +302,110 @@ async function handleScreenshot(
           mimeType: 'image/png',
         },
       ],
-      details: { action: 'screenshot', size: buffer.length },
+      details: { action: 'screenshot' },
     };
   } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Screenshot aborted by user.');
+    }
     const message = err instanceof Error ? err.message : String(err);
     return errorResult(`Failed to take screenshot: ${message}`);
   }
 }
 
 /**
- * Handle the 'get_content' action.
- * Returns the text content of the page or a specific element.
+ * Handle the 'get_text' action.
+ * Returns the text content of the page.
  */
-async function handleGetContent(
-  page: PlaywrightPage,
-  params: BrowserActionParams
+async function handleGetText(
+  signal?: AbortSignal
 ): Promise<PiAgentToolResult> {
   try {
-    if (params.selector) {
-      // Get content of a specific element
-      const locator = params.selector_type === 'text'
-        ? page.getByText(params.selector, { exact: false })
-        : page.locator(params.selector);
-
-      const content = await locator.first().textContent({ timeout: 10000 });
-      return textResult(
-        content ?? '(element found but has no text content)',
-        { selector: params.selector, selector_type: params.selector_type ?? 'css' }
-      );
-    }
-
-    // Get full page text content
-    const bodyContent = await page.evaluate(() => {
-      return document.body?.innerText ?? '(empty page)';
-    });
+    const content = await getText({ signal });
 
     // Truncate very long content to avoid overwhelming the LLM context
     const maxLength = 10000;
-    const truncated = bodyContent.length > maxLength
-      ? bodyContent.substring(0, maxLength) + '\n\n... (content truncated)'
-      : bodyContent;
+    const truncated = content.length > maxLength
+      ? content.substring(0, maxLength) + '\n\n... (content truncated)'
+      : content;
 
     return textResult(truncated, {
-      url: page.url(),
-      content_length: bodyContent.length,
-      truncated: bodyContent.length > maxLength,
+      content_length: content.length,
+      truncated: content.length > maxLength,
     });
   } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Get text aborted by user.');
+    }
     const message = err instanceof Error ? err.message : String(err);
-    return errorResult(`Failed to get page content: ${message}`);
+    return errorResult(`Failed to get page text: ${message}`);
+  }
+}
+
+/**
+ * Handle the 'scroll' action.
+ */
+async function handleScroll(
+  params: BrowserActionParams,
+  signal?: AbortSignal
+): Promise<PiAgentToolResult> {
+  const direction = params.direction || 'down';
+  try {
+    const result = await scrollPage(direction, { signal });
+    return textResult(
+      `Scrolled ${direction}.`,
+      { direction, success: result.success }
+    );
+  } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Scroll aborted by user.');
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    return errorResult(`Failed to scroll ${direction}: ${message}`);
+  }
+}
+
+/**
+ * Handle the 'hover' action.
+ * Uses element ref from a previous snapshot.
+ */
+async function handleHover(
+  params: BrowserActionParams,
+  signal?: AbortSignal
+): Promise<PiAgentToolResult> {
+  if (!params.ref) {
+    return errorResult(
+      'The "ref" parameter is required for the hover action. ' +
+      'Call "snapshot" first to discover element refs (e.g., "@e3").'
+    );
+  }
+
+  try {
+    const result = await hoverElement(params.ref, { signal });
+    return textResult(
+      `Hovered over element ${params.ref}.`,
+      { ref: params.ref, success: result.success }
+    );
+  } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Hover aborted by user.');
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    return errorResult(`Failed to hover over ${params.ref}: ${message}`);
   }
 }
 
 /**
  * Handle the 'go_back' action.
  */
-async function handleGoBack(page: PlaywrightPage): Promise<PiAgentToolResult> {
+async function handleGoBack(signal?: AbortSignal): Promise<PiAgentToolResult> {
   try {
-    await page.goBack({ timeout: 15000, waitUntil: 'domcontentloaded' });
-    return textResult(`Navigated back to: ${page.url()}`, { url: page.url() });
+    const result = await goBack({ signal });
+    return textResult('Navigated back.', { success: result.success });
   } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Go back aborted by user.');
+    }
     const message = err instanceof Error ? err.message : String(err);
     return errorResult(`Failed to go back: ${message}`);
   }
@@ -359,11 +414,14 @@ async function handleGoBack(page: PlaywrightPage): Promise<PiAgentToolResult> {
 /**
  * Handle the 'go_forward' action.
  */
-async function handleGoForward(page: PlaywrightPage): Promise<PiAgentToolResult> {
+async function handleGoForward(signal?: AbortSignal): Promise<PiAgentToolResult> {
   try {
-    await page.goForward({ timeout: 15000, waitUntil: 'domcontentloaded' });
-    return textResult(`Navigated forward to: ${page.url()}`, { url: page.url() });
+    const result = await goForward({ signal });
+    return textResult('Navigated forward.', { success: result.success });
   } catch (err: unknown) {
+    if (signal?.aborted) {
+      return errorResult('Go forward aborted by user.');
+    }
     const message = err instanceof Error ? err.message : String(err);
     return errorResult(`Failed to go forward: ${message}`);
   }
@@ -376,8 +434,9 @@ async function handleGoForward(page: PlaywrightPage): Promise<PiAgentToolResult>
 /**
  * Build the browser_action tool definition.
  *
- * Follows the same pattern as scheduler tools: returns an array
- * with a single AgentTool definition.
+ * Uses agent-browser CLI for browser automation. The agent first calls
+ * `snapshot` to discover interactive elements and their refs, then uses
+ * those refs for click/type/hover actions.
  */
 export function buildBrowserTool(): PiAgentTool[] {
   return [
@@ -385,36 +444,42 @@ export function buildBrowserTool(): PiAgentTool[] {
       name: 'browser_action',
       label: 'Browser Action',
       description:
-        'Automate the user web browser (Chrome or Edge). Connects to the browser via CDP. ' +
-        'Actions: navigate (go to URL), click (click element), type (enter text), ' +
-        'screenshot (capture page image), get_content (read page text), ' +
-        'go_back / go_forward (navigate history). ' +
-        'Use CSS selectors by default, or set selector_type to "text" to match by visible text. ' +
+        'Automate the user web browser (Chrome or Edge) via agent-browser CLI. ' +
+        'Actions: snapshot (get accessibility tree with element refs), ' +
+        'open (navigate to URL), click (click element by ref), ' +
+        'type (enter text by ref), screenshot (capture page image), ' +
+        'get_text (read page text), scroll (scroll page), ' +
+        'hover (hover over element by ref), go_back / go_forward (navigate history). ' +
+        'IMPORTANT: Before using click/type/hover, call "snapshot" first to discover ' +
+        'element refs (e.g., @e1, @e2). Then use those refs as the "ref" parameter. ' +
         'Each action requires user confirmation before executing.',
       parameters: Type.Object({
         action: Type.Union([
-          Type.Literal('navigate'),
+          Type.Literal('snapshot'),
+          Type.Literal('open'),
           Type.Literal('click'),
           Type.Literal('type'),
           Type.Literal('screenshot'),
-          Type.Literal('get_content'),
+          Type.Literal('get_text'),
+          Type.Literal('scroll'),
+          Type.Literal('hover'),
           Type.Literal('go_back'),
           Type.Literal('go_forward'),
         ], { description: 'The browser action to perform' }),
         url: Type.Optional(Type.String({
-          description: 'URL to navigate to (required for "navigate" action)',
+          description: 'URL to navigate to (required for "open" action)',
         })),
-        selector: Type.Optional(Type.String({
-          description: 'CSS selector or text to match an element (for click/type/get_content actions)',
+        ref: Type.Optional(Type.String({
+          description: 'Element ref from snapshot (e.g., "@e3"). Required for click/type/hover actions.',
         })),
         text: Type.Optional(Type.String({
           description: 'Text to type into the selected element (required for "type" action)',
         })),
-        selector_type: Type.Optional(Type.Union([
-          Type.Literal('css'),
-          Type.Literal('text'),
+        direction: Type.Optional(Type.Union([
+          Type.Literal('up'),
+          Type.Literal('down'),
         ], {
-          description: 'How to interpret the selector: "css" for CSS selector, "text" for visible text match. Default: css',
+          description: 'Scroll direction (for "scroll" action). Default: down',
         })),
       }),
       execute: async (
@@ -431,44 +496,48 @@ export function buildBrowserTool(): PiAgentTool[] {
         }
 
         // Establish browser connection
-        let browser: PlaywrightBrowser;
         try {
-          browser = await getOrConnectBrowser();
+          await ensureBrowserReady(signal);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           return errorResult(`Browser connection failed: ${message}`);
         }
 
-        // Get a page to operate on
-        let page: PlaywrightPage;
-        try {
-          page = await getOrCreatePage(browser);
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          return errorResult(`Failed to get browser page: ${message}`);
-        }
-
         // Dispatch to action handler
         switch (typedParams.action) {
-          case 'navigate':
-            return handleNavigate(page, typedParams, signal);
+          case 'snapshot':
+            return handleSnapshot(signal);
+          case 'open':
+            return handleOpen(typedParams, signal);
           case 'click':
-            return handleClick(page, typedParams);
+            return handleClick(typedParams, signal);
           case 'type':
-            return handleType(page, typedParams);
+            return handleType(typedParams, signal);
           case 'screenshot':
-            return handleScreenshot(page);
-          case 'get_content':
-            return handleGetContent(page, typedParams);
+            return handleScreenshot(signal);
+          case 'get_text':
+            return handleGetText(signal);
+          case 'scroll':
+            return handleScroll(typedParams, signal);
+          case 'hover':
+            return handleHover(typedParams, signal);
           case 'go_back':
-            return handleGoBack(page);
+            return handleGoBack(signal);
           case 'go_forward':
-            return handleGoForward(page);
+            return handleGoForward(signal);
           default:
-            return errorResult(`Unknown browser action: "${String(typedParams.action)}". ` +
-              'Supported: navigate, click, type, screenshot, get_content, go_back, go_forward.');
+            return errorResult(
+              `Unknown browser action: "${String(typedParams.action)}". ` +
+              'Supported: snapshot, open, click, type, screenshot, get_text, scroll, hover, go_back, go_forward.'
+            );
         }
       },
     },
   ];
 }
+
+/**
+ * Shut down the agent-browser daemon.
+ * Call this on app exit to clean up the Rust daemon process.
+ */
+export { shutdownDaemon };

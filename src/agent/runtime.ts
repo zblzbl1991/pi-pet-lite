@@ -17,10 +17,13 @@
  */
 
 import { AgentState, TrustLevel, ThinkingLevel } from '../shared/types';
+import type { PetProfile } from '../shared/types';
 import { TRUST_POLICY } from '../shared/constants';
 import { createModel } from './llm';
 import { getLLMConfig } from './llm';
-import { getAllTools, restoreSchedules, setScheduleFireCallback } from './tools/registry';
+import { getToolsForProfile, restoreSchedules, setScheduleFireCallback } from './tools/registry';
+import { getDefaultProfile } from './profiles';
+import { recordExperience, summarizeRecentFailures, buildKnownIssuesText } from './experience';
 
 /** Type aliases for pi-agent-core types (resolved at runtime via dynamic import) */
 type PiAgentEvent = import('@earendil-works/pi-agent-core').AgentEvent;
@@ -125,37 +128,49 @@ function hasToolCalls(content: PiAssistantMessage['content']): boolean {
  *
  * @param onEvent - Callback for agent events forwarded to the renderer
  * @param getConfirmation - Function that sends confirmation to renderer and returns the user's response
+ * @param profile - Optional PetProfile to configure tools, system prompt, and trust policy.
+ *                  Defaults to the Chief profile if not specified (backward compatible).
  */
 export async function createAgentRuntime(
   onEvent: AgentEventCallback,
-  getConfirmation: ConfirmationHandler
+  getConfirmation: ConfirmationHandler,
+  profile?: PetProfile
 ): Promise<AgentRuntime> {
+  // Resolve profile: use provided profile or default to Chief
+  const resolvedProfile = profile ?? getDefaultProfile();
+
   const core = await loadPiAgentCore();
   const ai = await loadPiAi();
 
   // Create the LLM model from config
+  // If the profile has LLM overrides, they will be applied after model creation
   const { model, apiKey } = await createModel();
 
-  // Read thinkingLevel from config
-  const llmConfig = getLLMConfig();
-  const thinkingLevel = (llmConfig.thinkingLevel || 'off') as PiThinkingLevel;
+  // Read thinkingLevel from config (profile override takes precedence if set)
+  const globalLlmConfig = getLLMConfig();
+  const thinkingLevel = (
+    resolvedProfile.llm?.thinkingLevel ?? globalLlmConfig.thinkingLevel ?? 'off'
+  ) as PiThinkingLevel;
 
-  // Build tools from the centralized registry
-  // getAllTools() is async because it dynamically imports pi-coding-agent (ESM-only)
-  const tools = await getAllTools();
+  // Build tools filtered by the profile's tool allowlist
+  const tools = await getToolsForProfile(resolvedProfile);
+
+  // Build the effective trust policy: global defaults merged with profile overrides
+  // trustOverrides is Partial<Record<...>> so we filter out undefined entries
+  const overrides = resolvedProfile.trustOverrides ?? {};
+  const effectiveTrustPolicy: Record<string, TrustLevel> = { ...TRUST_POLICY };
+  for (const [tool, level] of Object.entries(overrides)) {
+    if (level !== undefined) {
+      effectiveTrustPolicy[tool] = level;
+    }
+  }
 
   // Track the current confirmation handler
   let confirmationHandler = getConfirmation;
 
-  // System prompt for Clawd
-  const systemPrompt = `You are Clawd, a helpful desktop AI assistant in the form of a cat character.
-You help users complete tasks on their computer. You can read and write files, edit files,
-list directories, search for files and text patterns, execute shell commands, manage scheduled tasks,
-and automate web browser actions (navigate, click, type, screenshot, read page content).
-Be concise, friendly, and helpful.
-
-When a user asks you to do something, use the available tools to accomplish the task.
-If you need clarification, ask the user. Always explain what you're doing.`;
+  // Use the profile's system prompt, augmented with known failure patterns from experience log
+  const knownIssues = buildKnownIssuesText(summarizeRecentFailures());
+  const systemPrompt = resolvedProfile.systemPrompt + knownIssues;
 
   // Track streaming message IDs for the renderer
   let currentAssistantMessageId: string | null = null;
@@ -163,6 +178,7 @@ If you need clarification, ask the user. Always explain what you're doing.`;
   let messageCounter = 0;
   let turnCounter = 0;
   const toolStartTimes = new Map<string, number>();
+  const toolStartArgs = new Map<string, Record<string, unknown>>();
 
   // Create the Agent
   const agent = new core.Agent({
@@ -178,7 +194,7 @@ If you need clarification, ask the user. Always explain what you're doing.`;
     toolExecution: 'sequential' as PiToolExecutionMode,
     beforeToolCall: async (context, signal) => {
       const toolName = context.toolCall.name;
-      const trustLevel = TRUST_POLICY[toolName] ?? TrustLevel.CONFIRM_ONCE;
+      const trustLevel = effectiveTrustPolicy[toolName] ?? TrustLevel.CONFIRM_ONCE;
       const args = context.args as Record<string, unknown>;
 
       if (trustLevel === TrustLevel.AUTO) {
@@ -294,6 +310,7 @@ If you need clarification, ask the user. Always explain what you're doing.`;
 
       case 'tool_execution_start':
         toolStartTimes.set(event.toolCallId, Date.now());
+        toolStartArgs.set(event.toolCallId, event.args as Record<string, unknown>);
         onEvent({
           type: 'tool-execution',
           toolExecution: {
@@ -314,7 +331,9 @@ If you need clarification, ask the user. Always explain what you're doing.`;
           ?.join('') ?? '';
         const startTime = toolStartTimes.get(event.toolCallId);
         const duration = startTime ? Date.now() - startTime : undefined;
+        const toolArgs = toolStartArgs.get(event.toolCallId);
         toolStartTimes.delete(event.toolCallId);
+        toolStartArgs.delete(event.toolCallId);
         onEvent({
           type: 'tool-execution',
           toolExecution: {
@@ -324,6 +343,16 @@ If you need clarification, ask the user. Always explain what you're doing.`;
             result: resultText,
             duration,
           },
+        });
+
+        // Record tool execution outcome to experience log
+        recordExperience({
+          ts: new Date().toISOString(),
+          tool: event.toolName,
+          ok: !event.isError,
+          ms: duration ?? 0,
+          ...(event.isError && resultText ? { err: resultText } : {}),
+          ...(event.isError && toolArgs ? { args: toolArgs } : {}),
         });
         break;
       }

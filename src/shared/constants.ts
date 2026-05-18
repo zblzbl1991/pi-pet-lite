@@ -48,6 +48,10 @@ export const TRUST_POLICY: Record<string, TrustLevel> = {
   list_schedules: TrustLevel.AUTO,
   delete_schedule: TrustLevel.CONFIRM_ONCE,
   browser_action: TrustLevel.CONFIRM_STEP,
+  // Delegation and blackboard tools (Chief-only)
+  delegate_task: TrustLevel.AUTO,
+  read_blackboard: TrustLevel.AUTO,
+  write_blackboard: TrustLevel.AUTO,
 };
 
 /** Filename for persisting scheduled tasks */
@@ -81,3 +85,35 @@ export const IPC_CHAT_SLIDE_OUT_COMPLETE = 'chat:slide-out-complete';
 
 /** Maximum messages kept in main-process ring buffer */
 export const MESSAGE_BUFFER_MAX = 200;
+
+/** IPC channels for blackboard store operations */
+export const IPC_BB_GET = 'blackboard:get';
+export const IPC_BB_SET = 'blackboard:set';
+export const IPC_BB_DELETE = 'blackboard:delete';
+export const IPC_BB_LIST = 'blackboard:list';
+export const IPC_BB_QUERY = 'blackboard:query';
+
+/** Blackboard database filename */
+export const BLACKBOARD_DB_FILENAME = 'clawd-blackboard.db';
+
+/** Default capacity limits per namespace */
+export const BLACKBOARD_DEFAULT_CAPACITY = {
+  global: 200,
+  pet: 50,
+} as const;
+
+/** PetManager configuration */
+export const PET_MANAGER_MAX_CONCURRENT = 3;
+export const PET_MANAGER_IDLE_TIMEOUT_MINUTES = 15;
+export const PET_MANAGER_MAX_QUEUE_DEPTH = 5;
+
+/** Delegation timeout in milliseconds (5 minutes) */
+export const DELEGATION_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** IPC channels for pet management (main <-> renderer) */
+export const IPC_PET_STATUS = 'pet:status';
+export const IPC_PET_DELEGATE = 'pet:delegate';
+export const IPC_PET_ABORT = 'pet:abort';
+export const IPC_PET_STATUS_UPDATE = 'pet:status-update';
+export const IPC_PET_CONFIG = 'pet:config';
+export const IPC_PET_TOOLTIP = 'pet:tooltip';

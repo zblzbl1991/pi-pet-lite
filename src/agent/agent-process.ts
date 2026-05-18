@@ -6,15 +6,27 @@
  *   - Receiving user messages
  *   - Forwarding agent events (state changes, chat messages, tool confirmations)
  *   - Handling confirmation responses from the user
+ *
+ * After M4 (Multi-Pet Manager): This module now hosts a PetManager instance
+ * that manages multiple agent runtimes. The original single-agent flow (Chief)
+ * is preserved for backward compatibility. When the renderer sends 'user-input',
+ * it is delegated to the Chief pet. New 'pet-delegate' messages can target
+ * any pet profile.
  */
 
 import { MessagePortMain } from 'electron';
-import { AgentState, AgentToRendererMessage, RendererToAgentMessage, MessageRole } from '../shared/types';
-import type { ChatEntry } from '../shared/types';
+import { AgentState, AgentToRendererMessage, RendererToAgentMessage, MessageRole, PetStatus } from '../shared/types';
 import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
+import { PetManager } from './pet-manager';
+import { setPetManagerForDelegation } from './tools/delegate';
+import { getDefaultProfile } from './profiles';
 
 let agentPort: MessagePortMain | null = null;
 let agentRuntime: AgentRuntime | null = null;
+let petManager: PetManager | null = null;
+
+/** Whether multi-pet mode is enabled */
+let multiPetMode = false;
 
 /** Pending confirmation promises keyed by toolCallId */
 interface PendingConfirmation {
@@ -142,9 +154,9 @@ function createConfirmationHandler(): ConfirmationHandler {
 }
 
 /**
- * Initialize the agent runtime.
+ * Initialize the legacy single-agent runtime (backward compatible).
  */
-async function initAgent(): Promise<void> {
+async function initLegacyAgent(): Promise<void> {
   try {
     agentRuntime = await createAgentRuntime(
       handleAgentEvent,
@@ -168,6 +180,59 @@ async function initAgent(): Promise<void> {
     sendToRenderer({ type: 'error', message: `Agent initialization failed: ${errorMessage}` });
 
     // Fall back to a basic echo mode so the user gets feedback
+    sendToRenderer({ type: 'state-change', state: AgentState.IDLE });
+    sendToRenderer({
+      type: 'chat-message',
+      message: {
+        id: `fallback-${Date.now()}`,
+        role: MessageRole.ASSISTANT,
+        content: `I couldn't start the AI engine: ${errorMessage}. Please check your API key in Settings.`,
+        timestamp: Date.now(),
+      },
+    });
+  }
+}
+
+/**
+ * Initialize the PetManager for multi-pet support.
+ * The Chief agent is created on-demand when the first message arrives.
+ */
+async function initPetManager(): Promise<void> {
+  petManager = new PetManager(
+    handleAgentEvent,
+    createConfirmationHandler(),
+    // Status change callback: forward to renderer
+    (petId: string, status: PetStatus) => {
+      sendToRenderer({ type: 'pet-status', petId, status });
+    }
+  );
+
+  petManager.startReaper();
+
+  // Inject PetManager into delegation tools so delegate_task can access it
+  setPetManagerForDelegation(petManager);
+
+  // Auto-create the Chief agent for backward compatibility
+  try {
+    const chiefProfile = getDefaultProfile();
+    await petManager.ensure(chiefProfile.id); // Create agent without sending a prompt
+
+    sendToRenderer({ type: 'state-change', state: AgentState.IDLE });
+    sendToRenderer({
+      type: 'chat-message',
+      message: {
+        id: `greeting-${Date.now()}`,
+        role: MessageRole.ASSISTANT,
+        content: "Hi! I'm Clawd, your desktop AI assistant. Click on me and type a task to get started!",
+        timestamp: Date.now(),
+      },
+    });
+  } catch (err: unknown) {
+    // If Chief agent creation fails, the user might not have an API key yet.
+    // Send a fallback message and let them try via settings.
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error('Failed to initialize Chief agent via PetManager:', errorMessage);
+    sendToRenderer({ type: 'error', message: `Agent initialization failed: ${errorMessage}` });
     sendToRenderer({ type: 'state-change', state: AgentState.IDLE });
     sendToRenderer({
       type: 'chat-message',
@@ -206,6 +271,21 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
       break;
     }
 
+    case 'pet-delegate': {
+      handlePetDelegate(msg.petId, msg.prompt);
+      break;
+    }
+
+    case 'pet-abort': {
+      handlePetAbort(msg.petId);
+      break;
+    }
+
+    case 'pet-status-request': {
+      handlePetStatusRequest();
+      break;
+    }
+
     default: {
       const _exhaustive: never = msg;
       console.warn('Unknown message type from renderer:', (msg as Record<string, unknown>).type);
@@ -215,10 +295,22 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
 }
 
 /**
- * Handle user input - send to agent runtime if available, otherwise echo.
+ * Handle user input - send to Chief agent.
+ * Supports both legacy single-agent mode and PetManager mode.
  */
 async function handleUserInput(text: string): Promise<void> {
-  if (agentRuntime) {
+  if (multiPetMode && petManager) {
+    // Multi-pet mode: delegate to Chief
+    try {
+      const chiefProfile = getDefaultProfile();
+      await petManager.delegate(chiefProfile.id, text);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      sendToRenderer({ type: 'error', message: errorMessage });
+      sendToRenderer({ type: 'state-change', state: AgentState.IDLE });
+    }
+  } else if (agentRuntime) {
+    // Legacy single-agent mode
     try {
       await agentRuntime.prompt(text);
     } catch (err: unknown) {
@@ -248,14 +340,70 @@ async function handleUserInput(text: string): Promise<void> {
 }
 
 /**
+ * Handle pet-delegate message: delegate a task to a specific pet.
+ */
+async function handlePetDelegate(petId: string, prompt: string): Promise<void> {
+  if (!petManager) {
+    sendToRenderer({ type: 'error', message: 'PetManager not initialized' });
+    return;
+  }
+
+  try {
+    await petManager.delegate(petId, prompt);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'error', message: errorMessage });
+  }
+}
+
+/**
+ * Handle pet-abort message: abort a specific pet's current task.
+ */
+function handlePetAbort(petId: string): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'error', message: 'PetManager not initialized' });
+    return;
+  }
+
+  petManager.abort(petId);
+}
+
+/**
+ * Handle pet-status-request message: return all pet statuses.
+ */
+function handlePetStatusRequest(): void {
+  if (!petManager) {
+    // Return just the Chief status based on legacy agent
+    const chiefProfile = getDefaultProfile();
+    sendToRenderer({
+      type: 'pet-statuses',
+      statuses: [{
+        petId: chiefProfile.id,
+        status: agentRuntime ? PetStatus.IDLE : PetStatus.OFFLINE,
+        queueLength: 0,
+        successCount: 0,
+        errorCount: 0,
+        lastActivity: Date.now(),
+      }],
+    });
+    return;
+  }
+
+  const reports = petManager.getAllStatuses();
+  sendToRenderer({ type: 'pet-statuses', statuses: reports });
+}
+
+/**
  * Initialize the agent process.
  * Listens for the MessagePort from the main process, then starts the agent runtime.
+ *
+ * Supports an 'init' message for legacy mode and 'init-multi-pet' for PetManager mode.
  */
 process.parentPort.on('message', (event: unknown) => {
   const msgEvent = event as { data: { type: string }; ports: MessagePortMain[] };
   const msg = msgEvent.data;
 
-  if (msg.type === 'init') {
+  if (msg.type === 'init' || msg.type === 'init-multi-pet') {
     const [port] = msgEvent.ports;
     if (port) {
       agentPort = port;
@@ -265,10 +413,19 @@ process.parentPort.on('message', (event: unknown) => {
       });
       agentPort.start();
 
-      // Initialize the agent runtime (async, non-blocking)
-      initAgent().catch((err: unknown) => {
-        console.error('Unhandled error in agent init:', err);
-      });
+      // Determine mode from init message
+      multiPetMode = msg.type === 'init-multi-pet';
+
+      // Initialize the appropriate runtime
+      if (multiPetMode) {
+        initPetManager().catch((err: unknown) => {
+          console.error('Unhandled error in PetManager init:', err);
+        });
+      } else {
+        initLegacyAgent().catch((err: unknown) => {
+          console.error('Unhandled error in agent init:', err);
+        });
+      }
     }
   }
 });

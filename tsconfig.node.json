@@ -20,6 +20,7 @@
     "src/preload/**/*",
     "src/shared/**/*",
     "src/config/**/*",
+    "src/storage/**/*",
     "src/electron-shim.d.ts"
   ],
   "exclude": [
