@@ -3,7 +3,7 @@
   "name": "t1-types-extensions",
   "title": "T1: types.ts — PetRole + CUSTOM, PetProfile + enabled, AppConfig + profiles",
   "description": "PetRole新增CUSTOM:'custom'。PetProfile新增enabled?:boolean。AppConfig新增profiles?:PetProfile[]。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": "zbl",
   "createdAt": "2026-05-19",
-  "completedAt": null,
+  "completedAt": "2026-05-19",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -20,7 +20,9 @@
   "subtasks": [],
   "children": [],
   "parent": "05-19-pet-profile-configuration",
-  "relatedFiles": ["src/shared/types.ts"],
+  "relatedFiles": [
+    "src/shared/types.ts"
+  ],
   "notes": "No dependencies. All other tasks blocked on this.",
   "meta": {}
 }
