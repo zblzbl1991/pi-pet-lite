@@ -3,7 +3,7 @@
   "name": "t8-ipc-profiles-chain",
   "title": "T8: IPC 链路 — preload + electron-types + main.ts handlers",
   "description": "settings-preload新增loadProfiles/saveProfiles/resetProfiles。electron-types更新SettingsElectronAPI声明。main.ts新增3个IPC handlers, save后通知PetManager dispose受影响agent。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": "zbl",
   "createdAt": "2026-05-19",
-  "completedAt": null,
+  "completedAt": "2026-05-19",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -20,7 +20,11 @@
   "subtasks": [],
   "children": [],
   "parent": "05-19-pet-profile-configuration",
-  "relatedFiles": ["src/preload/settings-preload.ts","src/renderer/electron-types.d.ts","src/main/main.ts"],
+  "relatedFiles": [
+    "src/preload/settings-preload.ts",
+    "src/renderer/electron-types.d.ts",
+    "src/main/main.ts"
+  ],
   "notes": "Blocked by: T1, T3",
   "meta": {}
 }
