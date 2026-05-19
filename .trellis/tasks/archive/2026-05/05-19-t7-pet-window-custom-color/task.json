@@ -3,7 +3,7 @@
   "name": "t7-pet-window-custom-color",
   "title": "T7: pet-window-manager.ts — PET_ROLE_COLORS 增加 custom",
   "description": "PET_ROLE_COLORS新增custom:'#888888'默认灰色, 用于自定义profile的宠物窗口边框。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": "zbl",
   "createdAt": "2026-05-19",
-  "completedAt": null,
+  "completedAt": "2026-05-19",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -20,7 +20,9 @@
   "subtasks": [],
   "children": [],
   "parent": "05-19-pet-profile-configuration",
-  "relatedFiles": ["src/main/pet-window-manager.ts"],
+  "relatedFiles": [
+    "src/main/pet-window-manager.ts"
+  ],
   "notes": "Blocked by: T1",
   "meta": {}
 }
