@@ -180,3 +180,36 @@ Completed all 8 tasks: bootstrap project spec guidelines (11 files), tool experi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Pet Profile Configuration System (T1-T9)
+
+**Date**: 2026-05-19
+**Task**: Pet Profile Configuration System (T1-T9)
+**Branch**: `master`
+
+### Summary
+
+Implemented complete pet profile configuration system: types extensions (PetRole.CUSTOM, PetProfile.enabled, AppConfig.profiles), TOOL_GROUPS constants, config-store profiles CRUD, profiles.ts merge logic with resolveProfile/getEnabledSpecialistProfiles, runtime specialist auto-injection, dynamic delegate validation, PET_ROLE_COLORS custom, full IPC chain, and Settings UI Pets tab with card list/grouped checkboxes/Markdown editor. All tasks T1-T9 completed and archived.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `92fa093` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
