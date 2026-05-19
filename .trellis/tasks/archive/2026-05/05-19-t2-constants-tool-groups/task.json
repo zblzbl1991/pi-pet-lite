@@ -3,7 +3,7 @@
   "name": "t2-constants-tool-groups",
   "title": "T2: constants.ts — TOOL_GROUPS, CUSTOM_DEFAULT_PROMPT, CUSTOM_DEFAULT_TOOLS",
   "description": "新增TOOL_GROUPS分组映射(浏览器/文件/搜索/Shell/委派/计划)及友好名称。新增CUSTOM_PROFILE_DEFAULT_PROMPT模板和CUSTOM_DEFAULT_TOOLS=['read','grep','find','ls']。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": "zbl",
   "createdAt": "2026-05-19",
-  "completedAt": null,
+  "completedAt": "2026-05-19",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -20,7 +20,9 @@
   "subtasks": [],
   "children": [],
   "parent": "05-19-pet-profile-configuration",
-  "relatedFiles": ["src/shared/constants.ts"],
+  "relatedFiles": [
+    "src/shared/constants.ts"
+  ],
   "notes": "Blocked by: T1",
   "meta": {}
 }
