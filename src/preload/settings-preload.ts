@@ -1,10 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { LLMConfig, NotificationConfig, BrowserConfig } from '../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel } from '../shared/types';
 
 /**
  * Preload script for the settings BrowserWindow.
  * Exposes settingsAPI via contextBridge for reading/writing config,
  * testing LLM connections, managing notification preferences,
+ * managing risk level / permission settings,
  * and closing the window.
  */
 
@@ -62,6 +63,17 @@ const api = {
       success: boolean;
       error?: string;
       browserInfo?: string;
+    }>;
+  },
+
+  loadRiskLevel(): Promise<RiskLevel> {
+    return ipcRenderer.invoke('settings:load-risk-level') as Promise<RiskLevel>;
+  },
+
+  saveRiskLevel(level: RiskLevel): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('settings:save-risk-level', level) as Promise<{
+      success: boolean;
+      error?: string;
     }>;
   },
 

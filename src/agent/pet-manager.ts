@@ -385,7 +385,7 @@ export class PetManager {
           // Reset idle timer since we're active
           this.resetIdleTimer(petId);
 
-          await managed.agent.prompt(task.prompt);
+          const agentOutput = await managed.agent.prompt(task.prompt);
 
           const durationMs = Date.now() - startTime;
           managed.successCount++;
@@ -393,7 +393,7 @@ export class PetManager {
 
           task.resolve({
             success: true,
-            output: 'Task completed successfully',
+            output: agentOutput || 'Task completed successfully',
             durationMs,
           });
         } catch (err: unknown) {
@@ -420,8 +420,15 @@ export class PetManager {
       if (this.agents.has(petId)) {
         managed.isExecuting = false;
         managed.status = 'idle';
-        this.resetIdleTimer(petId);
         this.emitStatusChange(petId, 'idle');
+
+        // Dispose specialist agents immediately after their queue empties.
+        // Chief stays alive permanently as the main coordinator.
+        if (petId !== 'chief') {
+          this.dispose(petId);
+        } else {
+          this.resetIdleTimer(petId);
+        }
       }
     }
   }

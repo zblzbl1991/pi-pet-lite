@@ -141,7 +141,7 @@ export const ChatPanel: React.FC = () => {
         }
         return prev;
       });
-    }, 1500);
+    }, 4000);
     collapseTimers.current.set(toolCallId, timer);
   }, []);
 
@@ -293,14 +293,22 @@ export const ChatPanel: React.FC = () => {
     inputRef.current?.focus();
   }, [inputText, api]);
 
+  const handleAbort = useCallback(() => {
+    api.sendToAgent({ type: 'abort' });
+  }, [api]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        handleSend();
+        if (streamingId) {
+          handleAbort();
+        } else {
+          handleSend();
+        }
       }
     },
-    [handleSend]
+    [handleSend, handleAbort, streamingId]
   );
 
   const handleConfirm = useCallback(
@@ -507,13 +515,23 @@ export const ChatPanel: React.FC = () => {
           onKeyDown={handleKeyDown}
           placeholder="Tell Clawd what to do..."
         />
-        <button
-          style={sendButtonStyle}
-          onClick={handleSend}
-          disabled={!inputText.trim()}
-        >
-          Send
-        </button>
+        {streamingId ? (
+          <button
+            style={stopButtonStyle}
+            onClick={handleAbort}
+            title="Stop generating"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            style={sendButtonStyle}
+            onClick={handleSend}
+            disabled={!inputText.trim()}
+          >
+            Send
+          </button>
+        )}
       </div>
     </div>
   );
@@ -639,9 +657,8 @@ const toolCardStyle: React.CSSProperties = {
   background: 'rgba(40, 42, 48, 0.95)',
   border: '1px solid rgba(255, 255, 255, 0.08)',
   borderRadius: 10,
-  maxWidth: '90%',
+  maxWidth: '95%',
   minWidth: 200,
-  overflow: 'hidden',
 };
 
 const toolCardHeaderStyle: React.CSSProperties = {
@@ -682,6 +699,7 @@ const toolCardSummaryStyle: React.CSSProperties = {
   fontSize: 11,
   color: 'rgba(200, 200, 210, 0.6)',
   flex: 1,
+  minWidth: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
@@ -720,10 +738,10 @@ const toolCardPreStyle: React.CSSProperties = {
   borderRadius: 6,
   padding: '6px 8px',
   margin: 0,
-  maxHeight: 120,
+  maxHeight: 200,
   overflow: 'auto',
   whiteSpace: 'pre-wrap',
-  wordBreak: 'break-all',
+  wordBreak: 'break-word',
 };
 
 const toolCardResultStyle: React.CSSProperties = {
@@ -733,10 +751,10 @@ const toolCardResultStyle: React.CSSProperties = {
   background: 'rgba(0, 0, 0, 0.2)',
   borderRadius: 6,
   padding: '6px 8px',
-  maxHeight: 150,
+  maxHeight: 300,
   overflow: 'auto',
   whiteSpace: 'pre-wrap',
-  wordBreak: 'break-all',
+  wordBreak: 'break-word',
 };
 
 const confirmCardStyle: React.CSSProperties = {
@@ -816,6 +834,17 @@ const sendButtonStyle: React.CSSProperties = {
   fontSize: 12,
   cursor: 'pointer',
   opacity: 1,
+};
+
+const stopButtonStyle: React.CSSProperties = {
+  background: '#d9534f',
+  border: 'none',
+  borderRadius: 8,
+  padding: '8px 14px',
+  color: '#fff',
+  fontSize: 12,
+  cursor: 'pointer',
+  minWidth: 52,
 };
 
 const closeButtonStyle: React.CSSProperties = {

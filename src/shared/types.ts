@@ -82,6 +82,15 @@ export const TrustLevel = {
 
 export type TrustLevel = (typeof TrustLevel)[keyof typeof TrustLevel];
 
+/** Risk level controlling how aggressively tools can execute without confirmation */
+export const RiskLevel = {
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+} as const;
+
+export type RiskLevel = (typeof RiskLevel)[keyof typeof RiskLevel];
+
 /** Pet profile role identifiers */
 export const PetRole = {
   CHIEF: 'chief',
@@ -124,6 +133,8 @@ export interface PetProfile {
   skills?: string[];
   /** Pet icon or GIF name for this profile */
   icon?: string;
+  /** GIF prefix for state animations (e.g. "clawd", "ikun"). Defaults to "clawd". */
+  gifPrefix?: string;
 }
 
 /** Thinking level for agent reasoning */
@@ -163,6 +174,7 @@ export interface AppConfig {
   llm: LLMConfig;
   notifications: NotificationConfig;
   browser: BrowserConfig;
+  riskLevel: RiskLevel;
 }
 
 /** Messages sent from renderer to agent via MessagePort */
@@ -170,6 +182,7 @@ export type RendererToAgentMessage =
   | { type: 'user-input'; text: string }
   | { type: 'ping' }
   | { type: 'confirmation-response'; toolCallId: string; approved: boolean }
+  | { type: 'abort' }
   | { type: 'pet-delegate'; petId: string; prompt: string }
   | { type: 'pet-abort'; petId: string }
   | { type: 'pet-status-request' };
@@ -209,16 +222,16 @@ export interface MainIPCChannels {
 
 /** Exposed via contextBridge in pet preload */
 export interface PetElectronAPI {
-  setIgnoreMouseEvents: (ignore: boolean) => void;
-  moveWindow: (deltaX: number, deltaY: number) => void;
-  getWindowPosition: () => Promise<{ x: number; y: number }>;
+  setIgnoreMouseEvents: (ignore: boolean, petId?: string) => void;
+  moveWindow: (deltaX: number, deltaY: number, petId?: string) => void;
+  getWindowPosition: (petId?: string) => Promise<{ x: number; y: number }>;
   openSettings: () => void;
   openChat: () => void;
   openQuickInput: () => void;
   onAgentMessage: (callback: (msg: AgentToRendererMessage) => void) => () => void;
   sendToAgent: (msg: RendererToAgentMessage) => void;
-  petDragStart: (offset: { x: number; y: number }) => void;
-  petDragEnd: () => void;
+  petDragStart: (offset: { x: number; y: number }, petId?: string) => void;
+  petDragEnd: (petId?: string) => void;
   /** Listen for pet status updates from main process */
   onPetStatusUpdate: (callback: (data: PetStatusUpdateData) => void) => () => void;
   /** Get this pet's identity (petId, name, role, roleColor, interactive) */

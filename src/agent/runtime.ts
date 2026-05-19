@@ -16,11 +16,12 @@
  * module's types.
  */
 
-import { AgentState, TrustLevel, ThinkingLevel } from '../shared/types';
+import { AgentState, TrustLevel, ThinkingLevel, RiskLevel } from '../shared/types';
 import type { PetProfile } from '../shared/types';
-import { TRUST_POLICY } from '../shared/constants';
+import { TRUST_POLICY, RISK_TRUST_POLICIES } from '../shared/constants';
 import { createModel } from './llm';
 import { getLLMConfig } from './llm';
+import { readConfig } from '../config/config-store';
 import { getToolsForProfile, restoreSchedules, setScheduleFireCallback } from './tools/registry';
 import { getDefaultProfile } from './profiles';
 import { recordExperience, summarizeRecentFailures, buildKnownIssuesText } from './experience';
@@ -85,8 +86,8 @@ export type ConfirmationHandler = (
 
 /** The running agent instance and associated state */
 export interface AgentRuntime {
-  /** Send a user message to the agent */
-  prompt(text: string): Promise<void>;
+  /** Send a user message to the agent, returns the last assistant text response */
+  prompt(text: string): Promise<string>;
   /** Abort the current agent run */
   abort(): void;
   /** Set the handler for confirmation requests from the renderer */
@@ -155,10 +156,12 @@ export async function createAgentRuntime(
   // Build tools filtered by the profile's tool allowlist
   const tools = await getToolsForProfile(resolvedProfile);
 
-  // Build the effective trust policy: global defaults merged with profile overrides
-  // trustOverrides is Partial<Record<...>> so we filter out undefined entries
+  // Build the effective trust policy based on configured risk level,
+  // then merge with profile-specific overrides
+  const configRiskLevel = readConfig().riskLevel ?? 'medium';
+  const baseTrustPolicy = RISK_TRUST_POLICIES[configRiskLevel as RiskLevel] ?? RISK_TRUST_POLICIES.medium;
   const overrides = resolvedProfile.trustOverrides ?? {};
-  const effectiveTrustPolicy: Record<string, TrustLevel> = { ...TRUST_POLICY };
+  const effectiveTrustPolicy: Record<string, TrustLevel> = { ...baseTrustPolicy };
   for (const [tool, level] of Object.entries(overrides)) {
     if (level !== undefined) {
       effectiveTrustPolicy[tool] = level;
@@ -175,6 +178,7 @@ export async function createAgentRuntime(
   // Track streaming message IDs for the renderer
   let currentAssistantMessageId: string | null = null;
   let currentThinkingId: string | null = null;
+  let lastAssistantText = '';
   let messageCounter = 0;
   let turnCounter = 0;
   const toolStartTimes = new Map<string, number>();
@@ -375,6 +379,10 @@ export async function createAgentRuntime(
       case 'agent_end': {
         const msgs = event.messages;
         const lastMsg = msgs[msgs.length - 1];
+        // Capture the last assistant text for the prompt() return value
+        if (lastMsg && lastMsg.role === 'assistant') {
+          lastAssistantText = getAssistantText((lastMsg as PiAssistantMessage).content);
+        }
         if (lastMsg && 'stopReason' in lastMsg) {
           const stopReason = (lastMsg as PiAssistantMessage).stopReason;
           if (stopReason === 'error' || stopReason === 'aborted') {
@@ -429,8 +437,10 @@ export async function createAgentRuntime(
   restoreSchedules();
 
   return {
-    async prompt(text: string): Promise<void> {
+    async prompt(text: string): Promise<string> {
+      lastAssistantText = '';
       await agent.prompt(text);
+      return lastAssistantText;
     },
 
     abort(): void {

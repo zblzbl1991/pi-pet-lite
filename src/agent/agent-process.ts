@@ -271,6 +271,11 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
       break;
     }
 
+    case 'abort': {
+      handleAbort();
+      break;
+    }
+
     case 'pet-delegate': {
       handlePetDelegate(msg.petId, msg.prompt);
       break;
@@ -336,6 +341,18 @@ async function handleUserInput(text: string): Promise<void> {
         });
       }, 800);
     }, 500);
+  }
+}
+
+/**
+ * Handle abort message: stop the current agent run.
+ */
+function handleAbort(): void {
+  if (multiPetMode && petManager) {
+    const chiefProfile = getDefaultProfile();
+    petManager.abort(chiefProfile.id);
+  } else if (agentRuntime) {
+    agentRuntime.abort();
   }
 }
 

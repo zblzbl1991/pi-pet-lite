@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
-import { AppConfig, LLMConfig, NotificationConfig, BrowserConfig, ThinkingLevel } from '../shared/types';
+import { AppConfig, LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel } from '../shared/types';
 import { CONFIG_FILENAME } from '../shared/constants';
 
 /**
@@ -42,6 +42,7 @@ const DEFAULT_CONFIG: AppConfig = {
     chromePath: '',
     cdpPort: 9222,
   },
+  riskLevel: 'medium' as RiskLevel,
 };
 
 /**
@@ -69,6 +70,7 @@ export function readConfig(): AppConfig {
         ...DEFAULT_CONFIG.browser,
         ...parsed.browser,
       },
+      riskLevel: parsed.riskLevel ?? DEFAULT_CONFIG.riskLevel,
     };
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -131,6 +133,16 @@ export function updateBrowserConfig(browser: Partial<BrowserConfig>): AppConfig 
       ...browser,
     },
   };
+  writeConfig(updated);
+  return updated;
+}
+
+/**
+ * Update only the risk level setting.
+ */
+export function updateRiskLevel(riskLevel: RiskLevel): AppConfig {
+  const current = readConfig();
+  const updated: AppConfig = { ...current, riskLevel };
   writeConfig(updated);
   return updated;
 }

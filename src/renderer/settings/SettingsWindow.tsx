@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { LLMConfig, NotificationConfig, BrowserConfig, ThinkingLevel } from '../../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel } from '../../shared/types';
 
 /** Provider option with display label and available models */
 interface ProviderOption {
@@ -72,7 +72,7 @@ const PROVIDERS: ProviderOption[] = [
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
 /** Sidebar navigation sections */
-type Section = 'llm' | 'browser' | 'notifications';
+type Section = 'llm' | 'browser' | 'notifications' | 'permissions';
 
 const sharedStyles: Record<string, React.CSSProperties> = {
   label: {
@@ -491,6 +491,107 @@ function NotificationsSection() {
   );
 }
 
+function PermissionsSection() {
+  const [riskLevel, setRiskLevel] = useState<RiskLevel>('medium');
+  const [saveMessage, setSaveMessage] = useState('');
+
+  useEffect(() => {
+    window.settingsAPI?.loadRiskLevel?.().then((level) => { if (level) setRiskLevel(level); });
+  }, []);
+
+  const handleChange = useCallback((level: RiskLevel) => {
+    setRiskLevel(level);
+    setSaveMessage('');
+    window.settingsAPI?.saveRiskLevel?.(level).then((r) => {
+      setSaveMessage(r?.success ? 'Permission settings saved' : (r?.error || 'Failed to save'));
+      setTimeout(() => setSaveMessage(''), 2000);
+    });
+  }, []);
+
+  const options: { value: RiskLevel; label: string; color: string; hint: string; description: string }[] = [
+    {
+      value: 'low',
+      label: 'Low Risk',
+      color: '#5cb85c',
+      hint: 'All tools require confirmation',
+      description: 'Every tool call (including read-only operations) will ask for your approval before executing. Safest mode, suitable for first-time users or sensitive environments.',
+    },
+    {
+      value: 'medium',
+      label: 'Medium Risk',
+      color: '#f0ad4e',
+      hint: 'Critical tools require confirmation',
+      description: 'Read-only tools execute automatically. Write, edit, bash, and browser operations still require your approval. Balanced mode for daily use.',
+    },
+    {
+      value: 'high',
+      label: 'High Risk',
+      color: '#d9534f',
+      hint: 'No confirmation needed',
+      description: 'All tools execute automatically without any confirmation. Most autonomous mode, suitable when you trust the agent to act independently.',
+    },
+  ];
+
+  return (
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+        Permissions
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {options.map((opt) => {
+          const selected = riskLevel === opt.value;
+          return (
+            <div
+              key={opt.value}
+              onClick={() => handleChange(opt.value)}
+              style={{
+                padding: '14px 16px',
+                borderRadius: 10,
+                border: `1.5px solid ${selected ? opt.color : 'rgba(255,255,255,0.08)'}`,
+                background: selected ? `${opt.color}12` : 'rgba(40,42,48,0.5)',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <div style={{
+                  width: 12, height: 12, borderRadius: 6,
+                  border: `2px solid ${selected ? opt.color : 'rgba(255,255,255,0.2)'}`,
+                  background: selected ? opt.color : 'transparent',
+                  transition: 'all 0.15s',
+                  flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: selected ? '#F0F1F2' : 'rgba(200,200,210,0.7)' }}>
+                  {opt.label}
+                </span>
+                <span style={{ fontSize: 11, color: `${opt.color}bb`, marginLeft: 'auto' }}>
+                  {opt.hint}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(200,200,210,0.5)', paddingLeft: 22, lineHeight: 1.5 }}>
+                {opt.description}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {riskLevel === 'high' && (
+        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 6, background: 'rgba(217,83,79,0.1)', color: '#d9534f', fontSize: 12 }}>
+          Warning: High risk mode allows the agent to execute all operations without confirmation, including file deletion and shell commands.
+        </div>
+      )}
+
+      {saveMessage && (
+        <div style={{ marginTop: 8, fontSize: 12, color: saveMessage.includes('Failed') ? '#d9534f' : '#5cb85c' }}>
+          {saveMessage}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main settings window with sidebar navigation
 // ---------------------------------------------------------------------------
@@ -502,6 +603,7 @@ export const SettingsWindow: React.FC = () => {
     { key: 'llm', label: 'LLM' },
     { key: 'browser', label: 'Browser' },
     { key: 'notifications', label: 'Notifications' },
+    { key: 'permissions', label: 'Permissions' },
   ];
 
   return (
@@ -555,6 +657,7 @@ export const SettingsWindow: React.FC = () => {
           {section === 'llm' && <LLMSection />}
           {section === 'browser' && <BrowserSection />}
           {section === 'notifications' && <NotificationsSection />}
+          {section === 'permissions' && <PermissionsSection />}
         </div>
       </div>
 

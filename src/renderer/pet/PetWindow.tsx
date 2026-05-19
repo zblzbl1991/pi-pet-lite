@@ -223,12 +223,10 @@ export const PetWindow: React.FC = () => {
     [api, isInteractive]
   );
 
-  // ---- Pointer-based drag — ONLY on interactive pet area ----
+  // ---- Pointer-based drag — all pets are draggable ----
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (!isInteractive) return;
-
       const petEl = petAreaRef.current;
       if (!petEl) return;
 
@@ -243,12 +241,11 @@ export const PetWindow: React.FC = () => {
       setIsDragging(false);
       dragStartRef.current = { x: e.screenX, y: e.screenY };
     },
-    [isInteractive]
+    []
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!isInteractive) return;
       if (isDraggingRef.current) return;
       if (!pointerDownRef.current) return;
 
@@ -262,24 +259,22 @@ export const PetWindow: React.FC = () => {
           x: e.screenX - window.screenX,
           y: e.screenY - window.screenY,
         };
-        api?.petDragStart?.(offset);
+        api?.petDragStart?.(offset, petConfig?.petId);
       }
     },
-    [api, isInteractive]
+    [api, petConfig?.petId]
   );
 
   const handlePointerUp = useCallback(() => {
-    if (!isInteractive) return;
-
     if (isDraggingRef.current) {
-      api?.petDragEnd?.();
+      api?.petDragEnd?.(petConfig?.petId);
     }
     setTimeout(() => {
       isDraggingRef.current = false;
       pointerDownRef.current = false;
       setIsDragging(false);
     }, 0);
-  }, [api, isInteractive]);
+  }, [api, petConfig?.petId]);
 
   // Click-through toggle via hit testing on the full container.
   // Both interactive and non-interactive pets need this: interactive for drag,
@@ -299,12 +294,12 @@ export const PetWindow: React.FC = () => {
         e.clientY >= rect.top &&
         e.clientY <= rect.bottom;
 
-      api.setIgnoreMouseEvents(!isOverPet);
+      api.setIgnoreMouseEvents(!isOverPet, petConfig?.petId);
     };
 
     document.addEventListener('mousemove', handleGlobalMouseMove);
     return () => document.removeEventListener('mousemove', handleGlobalMouseMove);
-  }, [api]);
+  }, [api, petConfig?.petId]);
 
   return (
     <div
@@ -329,9 +324,7 @@ export const PetWindow: React.FC = () => {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         style={{
-          cursor: isInteractive
-            ? isDragging ? 'grabbing' : 'pointer'
-            : 'default',
+          cursor: isDragging ? 'grabbing' : 'pointer',
           position: 'relative',
         }}
       >

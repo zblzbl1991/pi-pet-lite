@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_PET_STATUS_UPDATE, IPC_PET_TOOLTIP } from '../shared/constants';
+
+// Sandbox mode cannot resolve relative requires; inline the IPC channel names.
+const IPC_PET_STATUS_UPDATE = 'pet:status-update';
+const IPC_PET_TOOLTIP = 'pet:tooltip';
 
 /**
  * Preload script for the pet BrowserWindow.
@@ -23,16 +26,16 @@ function getPetConfigFromUrl() {
 }
 
 const api = {
-  setIgnoreMouseEvents(ignore: boolean): void {
-    ipcRenderer.send('set-ignore-mouse-events', ignore);
+  setIgnoreMouseEvents(ignore: boolean, petId?: string): void {
+    ipcRenderer.send('set-ignore-mouse-events', ignore, petId ?? getPetConfigFromUrl().petId);
   },
 
-  moveWindow(deltaX: number, deltaY: number): void {
-    ipcRenderer.send('move-window', deltaX, deltaY);
+  moveWindow(deltaX: number, deltaY: number, petId?: string): void {
+    ipcRenderer.send('move-window', deltaX, deltaY, petId ?? getPetConfigFromUrl().petId);
   },
 
-  getWindowPosition(): Promise<{ x: number; y: number }> {
-    return ipcRenderer.invoke('get-window-position') as Promise<{
+  getWindowPosition(petId?: string): Promise<{ x: number; y: number }> {
+    return ipcRenderer.invoke('get-window-position', petId ?? getPetConfigFromUrl().petId) as Promise<{
       x: number;
       y: number;
     }>;
@@ -50,12 +53,12 @@ const api = {
     ipcRenderer.send('open-quick-input');
   },
 
-  petDragStart(offset: { x: number; y: number }): void {
-    ipcRenderer.send('pet-drag-start', offset);
+  petDragStart(offset: { x: number; y: number }, petId?: string): void {
+    ipcRenderer.send('pet-drag-start', offset, petId ?? getPetConfigFromUrl().petId);
   },
 
-  petDragEnd(): void {
-    ipcRenderer.send('pet-drag-end');
+  petDragEnd(petId?: string): void {
+    ipcRenderer.send('pet-drag-end', petId ?? getPetConfigFromUrl().petId);
   },
 
   onAgentMessage(

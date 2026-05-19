@@ -1,4 +1,4 @@
-import { AgentState, TrustLevel } from './types';
+import { AgentState, TrustLevel, RiskLevel } from './types';
 
 /** Application constants */
 
@@ -20,16 +20,31 @@ export const CHAT_BUBBLE_DURATION = 5000;
 /** MessagePort channel name for renderer-agent communication */
 export const AGENT_MESSAGE_PORT = 'agent-message-port';
 
-/** Mapping from AgentState to GIF filename */
-export const AGENT_STATE_GIF_MAP: Record<AgentState, string> = {
-  [AgentState.IDLE]: 'clawd-idle.gif',
-  [AgentState.GREETING]: 'clawd-waving.gif',
-  [AgentState.THINKING]: 'clawd-review.gif',
-  [AgentState.EXECUTING]: 'clawd-running.gif',
-  [AgentState.WAITING]: 'clawd-waiting.gif',
-  [AgentState.SUCCESS]: 'clawd-jumping.gif',
-  [AgentState.FAILED]: 'clawd-failed.gif',
+/** Default GIF prefix for clawd-style pets */
+export const DEFAULT_GIF_PREFIX = 'clawd';
+
+/** Mapping from AgentState to GIF filename suffix (without prefix) */
+const AGENT_STATE_GIF_SUFFIX: Record<AgentState, string> = {
+  [AgentState.IDLE]: '-idle.gif',
+  [AgentState.GREETING]: '-waving.gif',
+  [AgentState.THINKING]: '-review.gif',
+  [AgentState.EXECUTING]: '-running.gif',
+  [AgentState.WAITING]: '-waiting.gif',
+  [AgentState.SUCCESS]: '-jumping.gif',
+  [AgentState.FAILED]: '-failed.gif',
 };
+
+/** Build GIF map for a given prefix (e.g. "clawd" → "clawd-idle.gif") */
+export function buildGifMap(prefix: string = DEFAULT_GIF_PREFIX): Record<AgentState, string> {
+  const map: Record<string, string> = {};
+  for (const [state, suffix] of Object.entries(AGENT_STATE_GIF_SUFFIX)) {
+    map[state] = `${prefix}${suffix}`;
+  }
+  return map as Record<AgentState, string>;
+}
+
+/** Default mapping from AgentState to GIF filename (clawd prefix) */
+export const AGENT_STATE_GIF_MAP: Record<AgentState, string> = buildGifMap();
 
 /** Trust policy for MVP - hardcoded security levels per tool */
 export const TRUST_POLICY: Record<string, TrustLevel> = {
@@ -52,6 +67,71 @@ export const TRUST_POLICY: Record<string, TrustLevel> = {
   delegate_task: TrustLevel.AUTO,
   read_blackboard: TrustLevel.AUTO,
   write_blackboard: TrustLevel.AUTO,
+};
+
+/**
+ * Risk-level-based trust policy overrides.
+ * Each risk level maps to a complete trust policy that replaces TRUST_POLICY.
+ *
+ * LOW:    All tools require confirmation (safest)
+ * MEDIUM: Only destructive/critical tools require confirmation (balanced)
+ * HIGH:   All tools auto-execute without confirmation (most autonomous)
+ */
+export const RISK_TRUST_POLICIES: Record<RiskLevel, Record<string, TrustLevel>> = {
+  [RiskLevel.LOW]: {
+    read: TrustLevel.CONFIRM_ONCE,
+    ls: TrustLevel.CONFIRM_ONCE,
+    find: TrustLevel.CONFIRM_ONCE,
+    grep: TrustLevel.CONFIRM_ONCE,
+    write: TrustLevel.CONFIRM_ONCE,
+    edit: TrustLevel.CONFIRM_ONCE,
+    bash: TrustLevel.CONFIRM_STEP,
+    create_directory: TrustLevel.CONFIRM_ONCE,
+    delete_file: TrustLevel.CONFIRM_STEP,
+    create_schedule: TrustLevel.CONFIRM_ONCE,
+    list_schedules: TrustLevel.CONFIRM_ONCE,
+    delete_schedule: TrustLevel.CONFIRM_STEP,
+    browser_action: TrustLevel.CONFIRM_STEP,
+    delegate_task: TrustLevel.CONFIRM_ONCE,
+    read_blackboard: TrustLevel.CONFIRM_ONCE,
+    write_blackboard: TrustLevel.CONFIRM_ONCE,
+  },
+  [RiskLevel.MEDIUM]: {
+    read: TrustLevel.AUTO,
+    ls: TrustLevel.AUTO,
+    find: TrustLevel.AUTO,
+    grep: TrustLevel.AUTO,
+    write: TrustLevel.CONFIRM_ONCE,
+    edit: TrustLevel.CONFIRM_ONCE,
+    bash: TrustLevel.CONFIRM_ONCE,
+    create_directory: TrustLevel.AUTO,
+    delete_file: TrustLevel.CONFIRM_ONCE,
+    create_schedule: TrustLevel.CONFIRM_ONCE,
+    list_schedules: TrustLevel.AUTO,
+    delete_schedule: TrustLevel.CONFIRM_ONCE,
+    browser_action: TrustLevel.CONFIRM_STEP,
+    delegate_task: TrustLevel.AUTO,
+    read_blackboard: TrustLevel.AUTO,
+    write_blackboard: TrustLevel.AUTO,
+  },
+  [RiskLevel.HIGH]: {
+    read: TrustLevel.AUTO,
+    ls: TrustLevel.AUTO,
+    find: TrustLevel.AUTO,
+    grep: TrustLevel.AUTO,
+    write: TrustLevel.AUTO,
+    edit: TrustLevel.AUTO,
+    bash: TrustLevel.AUTO,
+    create_directory: TrustLevel.AUTO,
+    delete_file: TrustLevel.AUTO,
+    create_schedule: TrustLevel.AUTO,
+    list_schedules: TrustLevel.AUTO,
+    delete_schedule: TrustLevel.AUTO,
+    browser_action: TrustLevel.AUTO,
+    delegate_task: TrustLevel.AUTO,
+    read_blackboard: TrustLevel.AUTO,
+    write_blackboard: TrustLevel.AUTO,
+  },
 };
 
 /** Filename for persisting scheduled tasks */

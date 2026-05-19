@@ -16,6 +16,15 @@
 import { spawn, ChildProcess } from 'child_process';
 
 // ---------------------------------------------------------------------------
+// Logging helper
+// ---------------------------------------------------------------------------
+
+function log(prefix: string, ...msg: unknown[]): void {
+  const ts = new Date().toISOString().slice(11, 23);
+  console.log(`[agent-browser ${ts}] [${prefix}]`, ...msg);
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -46,66 +55,35 @@ export interface ScreenshotResult {
 }
 
 // ---------------------------------------------------------------------------
+// Browser executable configuration
+// ---------------------------------------------------------------------------
+
+/** Custom browser executable path (user's Edge/Chrome). */
+let executablePath: string | null = null;
+
+/**
+ * Set the browser executable path for agent-browser to use.
+ * When set, agent-browser launches this browser instead of its bundled Chrome.
+ */
+export function setBrowserExecutablePath(path: string): void {
+  executablePath = path;
+  log('config', `executable path set to: ${path}`);
+}
+
+// ---------------------------------------------------------------------------
 // Daemon lifecycle
 // ---------------------------------------------------------------------------
 
-/** Whether the daemon has been started (connected to a CDP endpoint) */
-let daemonConnected = false;
-let connectedCdpPort: number | null = null;
-
-/**
- * Ensure the agent-browser daemon is connected to the target CDP port.
- *
- * agent-browser auto-starts its daemon on first command, but we need to
- * tell it which CDP endpoint to use. The `connect` command establishes
- * the connection, and subsequent commands reuse it.
- */
-export async function ensureDaemonConnected(cdpPort: number): Promise<void> {
-  if (daemonConnected && connectedCdpPort === cdpPort) {
-    return;
-  }
-
-  try {
-    await runCommand(['connect', '--cdp', String(cdpPort)]);
-    daemonConnected = true;
-    connectedCdpPort = cdpPort;
-  } catch (err: unknown) {
-    daemonConnected = false;
-    connectedCdpPort = null;
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `Failed to connect agent-browser daemon to CDP port ${cdpPort}: ${message}`
-    );
-  }
-}
-
 /**
  * Gracefully shut down the agent-browser daemon.
- *
- * Should be called on app exit to clean up the Rust daemon process.
+ * Call this on app exit to clean up the Rust daemon process.
  */
 export async function shutdownDaemon(): Promise<void> {
-  if (!daemonConnected) {
-    return;
-  }
-
   try {
     await runCommand(['close'], { timeout: 5000 });
   } catch {
     // Best-effort shutdown; ignore errors during cleanup
-  } finally {
-    daemonConnected = false;
-    connectedCdpPort = null;
   }
-}
-
-/**
- * Mark the daemon as disconnected (e.g., when the browser closes).
- * Does not attempt to send a close command.
- */
-export function markDaemonDisconnected(): void {
-  daemonConnected = false;
-  connectedCdpPort = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,10 +110,31 @@ export async function runCommand(
     // Add --json to get structured output (unless already present or command is 'close')
     const cliArgs = args[0] === 'close' ? args : [...args, '--json'];
 
-    const child: ChildProcess = spawn('agent-browser', cliArgs, {
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    // Windows: agent-browser installs as .cmd — spawn needs shell:true to resolve it.
+    // Other platforms: shell:false avoids unnecessary wrapper shell.
+    const isWin = process.platform === 'win32';
+
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      AGENT_BROWSER_HEADED: 'true',
+    };
+    if (executablePath) {
+      env.AGENT_BROWSER_EXECUTABLE_PATH = executablePath;
+    }
+
+    const spawnOpts = {
+      windowsHide: false,
+      stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
+      env,
+      shell: isWin,
+    };
+
+    log('cmd', `spawning: agent-browser ${cliArgs.join(' ')}`);
+    log('cmd', `platform=${process.platform}, shell=${isWin}, timeout=${timeout}ms, executablePath=${executablePath ?? 'default'}`);
+
+    const child: ChildProcess = spawn('agent-browser', cliArgs, spawnOpts);
+
+    log('cmd', `spawn pid=${child.pid}, connected=${!child.killed}`);
 
     let stdout = '';
     let stderr = '';
@@ -145,7 +144,10 @@ export async function runCommand(
     });
 
     child.stderr?.on('data', (data: Buffer) => {
-      stderr += data.toString();
+      const chunk = data.toString();
+      stderr += chunk;
+      // Log stderr chunks as they arrive for real-time diagnostics
+      log('stderr', chunk.trimEnd());
     });
 
     // Timeout handling
@@ -182,30 +184,43 @@ export async function runCommand(
         options.signal.removeEventListener('abort', onAbort);
       }
 
+      log('cmd', `process exited with code=${code}`);
+      log('cmd', `stdout length=${stdout.length}, stderr length=${stderr.length}`);
+
+      if (stdout.length > 0) {
+        const preview = stdout.length > 500 ? stdout.substring(0, 500) + '...[truncated]' : stdout;
+        log('stdout', preview.trimEnd());
+      }
+
       // Try to parse JSON from stdout
       const trimmed = stdout.trim();
       if (trimmed) {
         try {
           const parsed = JSON.parse(trimmed) as AgentBrowserResponse;
+          log('cmd', `parsed JSON response: success=${parsed.success}, hasData=${parsed.data != null}, error=${parsed.error ?? 'none'}`);
           if (code !== 0 && code !== null && !parsed.success) {
             const errorMsg = parsed.error || stderr.trim() || `Exit code ${code}`;
+            log('cmd', `REJECT: command failed — ${errorMsg}`);
             reject(new Error(`agent-browser error: ${errorMsg}`));
             return;
           }
+          log('cmd', `RESOLVE: success`);
           resolve(parsed);
           return;
-        } catch {
-          // JSON parse failed, fall through to error handling
+        } catch (parseErr) {
+          log('cmd', `JSON parse failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
         }
       }
 
       // Non-JSON output or empty stdout
       if (code === 0) {
+        log('cmd', `RESOLVE: non-JSON success (empty or plain text)`);
         resolve({ success: true, data: trimmed || undefined });
         return;
       }
 
       const errorMsg = stderr.trim() || `Exit code ${code}`;
+      log('cmd', `REJECT: non-JSON failure — ${errorMsg}`);
       reject(new Error(`agent-browser error: ${errorMsg}`));
     });
 
@@ -214,7 +229,16 @@ export async function runCommand(
       if (onAbort && options?.signal) {
         options.signal.removeEventListener('abort', onAbort);
       }
-      reject(new Error(`Failed to spawn agent-browser: ${err.message}`));
+      // Detect ENOENT (CLI not installed) and provide actionable guidance
+      const isEnoent = 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
+      log('spawn-error', `error=${err.message}, code=${(err as NodeJS.ErrnoException).code}, isENOENT=${isEnoent}`);
+      if (isEnoent) {
+        reject(new Error(
+          'agent-browser CLI is not installed. Install it with: npm i -g agent-browser && agent-browser install'
+        ));
+      } else {
+        reject(new Error(`Failed to spawn agent-browser: ${err.message}`));
+      }
     });
   });
 }

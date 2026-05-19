@@ -10,6 +10,7 @@ import type {
   LLMConfig,
   NotificationConfig,
   BrowserConfig,
+  RiskLevel,
   PetElectronAPI,
   ChatElectronAPI,
   QuickInputElectronAPI,
@@ -29,6 +30,8 @@ export interface SettingsElectronAPI {
   loadBrowserConfig: () => Promise<BrowserConfig>;
   saveBrowserConfig: (config: BrowserConfig) => Promise<{ success: boolean; error?: string }>;
   testBrowserConnection: (config: BrowserConfig) => Promise<{ success: boolean; error?: string; browserInfo?: string }>;
+  loadRiskLevel: () => Promise<RiskLevel>;
+  saveRiskLevel: (level: RiskLevel) => Promise<{ success: boolean; error?: string }>;
   closeWindow: () => void;
 }
 

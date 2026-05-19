@@ -15,6 +15,8 @@
  */
 
 import { BrowserWindow, screen } from 'electron';
+import path from 'path';
+import fs from 'fs';
 import { pathToFileURL } from 'url';
 import { PET_SIZE, IPC_AGENT_MESSAGE, IPC_PET_STATUS_UPDATE } from '../shared/constants';
 import type { PetProfile, PetRole } from '../shared/types';
@@ -114,27 +116,35 @@ export class PetWindowManager {
       },
     });
 
-    // Start click-through for non-chief pets
-    if (!isInteractive) {
-      win.setIgnoreMouseEvents(true, { forward: true });
-    } else {
-      // Chief starts as click-through; renderer toggles based on pixel alpha
-      win.setIgnoreMouseEvents(true, { forward: true });
-    }
+    // All pets start as click-through; renderer toggles based on hit-testing
+    win.setIgnoreMouseEvents(true, { forward: true });
 
     // Use 'floating' level so pet stays above normal windows but below taskbar
     win.setAlwaysOnTop(true, 'floating');
     win.setTitle('');
     win.setSkipTaskbar(true);
 
+    // Resolve gifs path: if profile has a gifPrefix, look for a matching subdirectory
+    let gifsPath = this.gifsBasePath;
+    if (profile.gifPrefix && profile.gifPrefix !== 'clawd') {
+      const parentDir = path.dirname(this.gifsBasePath);
+      const altPath = path.join(parentDir, 'gifs', `${profile.gifPrefix}-gifs`);
+      if (fs.existsSync(altPath)) {
+        gifsPath = altPath;
+      }
+    }
+
     // Build the URL with query params for the renderer
     const rendererUrl = pathToFileURL(this.rendererHtmlPath);
-    rendererUrl.searchParams.set('gifsPath', this.gifsBasePath);
+    rendererUrl.searchParams.set('gifsPath', gifsPath);
     rendererUrl.searchParams.set('petId', profile.id);
     rendererUrl.searchParams.set('petName', profile.name);
     rendererUrl.searchParams.set('petRole', profile.role);
     rendererUrl.searchParams.set('roleColor', roleColor);
     rendererUrl.searchParams.set('interactive', isInteractive ? '1' : '0');
+    if (profile.gifPrefix) {
+      rendererUrl.searchParams.set('gifPrefix', profile.gifPrefix);
+    }
 
     win.loadURL(rendererUrl.toString());
 
@@ -237,9 +247,8 @@ export class PetWindowManager {
    * Reposition all pet windows to avoid overlap.
    *
    * Strategy:
-   * - Chief is centered horizontally, positioned at ~65% screen height
-   * - Sub-pets are spread left and right from Chief with spacing
-   * - If the row would overflow the screen width, wrap to a second row above
+   * - All pets are placed in one horizontal row at the same Y level
+   * - Chief is centered; sub-pets spread left and right with spacing
    */
   layoutPets(): void {
     const primary = screen.getPrimaryDisplay();
@@ -252,37 +261,42 @@ export class PetWindowManager {
     const chief = entries.find((e) => e.profile.role === 'chief');
     const subPets = entries.filter((e) => e.profile.role !== 'chief');
 
-    // Calculate positions
     const centerX = Math.round(width * 0.45);
     const baseY = Math.round(height * 0.65);
+    const petLocalY = PET_WINDOW_HEIGHT - PET_SIZE;
 
-    // Position Chief
+    // Total count for horizontal centering
+    const totalCount = 1 + subPets.length;
+    const totalWidth = totalCount * PET_WINDOW_WIDTH + (totalCount - 1) * PET_GAP;
+    const startX = centerX - Math.round(totalWidth / 2);
+
+    // Position Chief at the center slot of the row
     if (chief && !chief.window.isDestroyed()) {
-      const petLocalX = (PET_WINDOW_WIDTH - PET_SIZE) / 2;
-      const petLocalY = PET_WINDOW_HEIGHT - PET_SIZE;
+      const chiefIndex = Math.floor(totalCount / 2);
+      const chiefX = startX + chiefIndex * (PET_WINDOW_WIDTH + PET_GAP);
       chief.window.setPosition(
-        Math.round(centerX - petLocalX),
+        Math.max(0, Math.min(chiefX, width - PET_WINDOW_WIDTH)),
         Math.round(baseY - petLocalY)
       );
     }
 
-    // Position sub-pets in a row below Chief
+    // Position sub-pets: half left of chief, half right of chief
     if (subPets.length > 0) {
-      const subPetY = baseY + PET_WINDOW_HEIGHT + PET_GAP;
-      const totalWidth = subPets.length * PET_WINDOW_WIDTH + (subPets.length - 1) * PET_GAP;
-      const startX = centerX - Math.round(totalWidth / 2);
-
-      // Check if sub-pets would go below the screen
-      const adjustedY = subPetY + PET_WINDOW_HEIGHT > height
-        ? baseY - PET_WINDOW_HEIGHT - PET_GAP // Place above Chief instead
-        : subPetY;
+      const halfLeft = Math.floor(subPets.length / 2);
+      const halfRight = subPets.length - halfLeft;
 
       subPets.forEach((entry, i) => {
         if (!entry.window.isDestroyed()) {
-          const x = startX + i * (PET_WINDOW_WIDTH + PET_GAP);
+          let slotIndex: number;
+          if (i < halfLeft) {
+            slotIndex = Math.floor(totalCount / 2) - halfLeft + i;
+          } else {
+            slotIndex = Math.floor(totalCount / 2) + 1 + (i - halfLeft);
+          }
+          const x = startX + slotIndex * (PET_WINDOW_WIDTH + PET_GAP);
           entry.window.setPosition(
             Math.max(0, Math.min(x, width - PET_WINDOW_WIDTH)),
-            adjustedY
+            Math.round(baseY - petLocalY)
           );
         }
       });

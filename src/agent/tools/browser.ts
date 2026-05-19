@@ -1,34 +1,30 @@
 /**
  * Browser automation tool for the Clawd agent.
  *
- * Connects to the user's existing Chrome or Edge browser via CDP
- * using agent-browser CLI (vercel-labs). The browser is launched with
- * --remote-debugging-port by browser-launch.ts; agent-browser daemon
- * connects to that CDP endpoint.
+ * Uses agent-browser CLI for browser automation. agent-browser manages
+ * its own browser lifecycle — we just tell it which executable to use
+ * (user's Edge/Chrome) and it handles the rest.
  *
  * Provides a single `browser_action` tool with sub-actions:
- *   - snapshot: Get accessibility tree with element refs (new)
+ *   - snapshot: Get accessibility tree with element refs
  *   - open: Navigate to a URL
  *   - click: Click an element by ref
  *   - type: Type text into an element by ref
  *   - screenshot: Capture a screenshot as base64
  *   - get_text: Get text content of the page
- *   - scroll: Scroll the page up or down (new)
- *   - hover: Hover over an element by ref (new)
+ *   - scroll: Scroll the page up or down
+ *   - hover: Hover over an element by ref
  *   - go_back / go_forward: Browser history navigation
  *
  * Selector model: Agent calls `snapshot` first to discover elements and
  * their refs (@e1, @e2, ...), then uses those refs for click/type/hover.
- *
- * Trust level: CONFIRM_STEP (each action needs user confirmation).
  */
 
 import { Type } from 'typebox';
-import { findBrowserPath, launchBrowserWithCDP } from './browser-launch';
+import { findBrowserPath } from './browser-launch';
 import {
-  ensureDaemonConnected,
+  setBrowserExecutablePath,
   shutdownDaemon,
-  markDaemonDisconnected,
   openUrl,
   snapshot,
   clickElement,
@@ -50,10 +46,9 @@ type PiAgentToolResult = import('@earendil-works/pi-agent-core').AgentToolResult
 type PiAgentToolUpdateCallback = import('@earendil-works/pi-agent-core').AgentToolUpdateCallback<unknown>;
 
 // ---------------------------------------------------------------------------
-// Connection state
+// State
 // ---------------------------------------------------------------------------
-let connectionAttempted = false;
-let lastCdpPort: number | null = null;
+let browserReady = false;
 
 // ---------------------------------------------------------------------------
 // Helper: build result objects
@@ -100,65 +95,36 @@ interface BrowserActionParams {
 }
 
 // ---------------------------------------------------------------------------
-// Connection management
+// Browser readiness
 // ---------------------------------------------------------------------------
 
 /**
- * Ensure browser is launched and agent-browser daemon is connected.
+ * One-time setup: find the user's browser and tell agent-browser to use it.
  *
- * Strategy:
- * 1. If daemon is already connected on the right port, return immediately.
- * 2. Try connecting the daemon to an already-running browser on the CDP port.
- * 3. If nothing is listening, find and launch Chrome/Edge with CDP,
- *    then connect the daemon.
+ * agent-browser manages its own browser lifecycle. We only need to:
+ * 1. Find Edge or Chrome on the system
+ * 2. Set AGENT_BROWSER_EXECUTABLE_PATH so agent-browser uses the user's browser
+ *    instead of its bundled Chrome v148
  */
-async function ensureBrowserReady(signal?: AbortSignal): Promise<number> {
+async function ensureBrowserReady(_signal?: AbortSignal): Promise<void> {
+  if (browserReady) {
+    return;
+  }
+
   const config = readConfig();
-  const cdpPort = config.browser?.cdpPort || 9222;
   const configuredChromePath = config.browser?.chromePath || undefined;
 
-  // Port changed -- mark daemon disconnected so we reconnect
-  if (lastCdpPort !== null && lastCdpPort !== cdpPort) {
-    markDaemonDisconnected();
-  }
-  lastCdpPort = cdpPort;
-
-  // Try connecting daemon to CDP port
-  try {
-    await ensureDaemonConnected(cdpPort);
-    return cdpPort;
-  } catch {
-    // Daemon couldn't connect -- maybe no browser is running on that port
-  }
-
-  if (signal?.aborted) {
-    throw new Error('Browser connection aborted.');
-  }
-
-  // Find a browser on the system
   const browserPath = findBrowserPath(configuredChromePath);
-  if (!browserPath) {
-    throw new Error(
-      'No Chrome or Edge browser found on this system. ' +
-      'Please install Chrome or Edge, or start your browser with ' +
-      `--remote-debugging-port=${cdpPort} and try again.`
-    );
+  console.log(`[browser-tool] ensureBrowserReady: found browser at "${browserPath ?? 'NONE'}"`);
+
+  if (browserPath) {
+    setBrowserExecutablePath(browserPath);
+    console.log(`[browser-tool] set executable path: ${browserPath}`);
+  } else {
+    console.log(`[browser-tool] no local browser found, agent-browser will use its bundled Chrome`);
   }
 
-  // Launch browser with CDP enabled
-  const { cdpReady } = await launchBrowserWithCDP(browserPath, cdpPort);
-  if (!cdpReady) {
-    throw new Error(
-      `Launched browser at "${browserPath}" but CDP port ${cdpPort} ` +
-      'did not become available in time. The browser may already be running. ' +
-      'Try closing all browser windows and retrying.'
-    );
-  }
-
-  // Now connect the daemon to the newly launched browser
-  await ensureDaemonConnected(cdpPort);
-  connectionAttempted = true;
-  return cdpPort;
+  browserReady = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -490,17 +456,20 @@ export function buildBrowserTool(): PiAgentTool[] {
       ): Promise<PiAgentToolResult> => {
         const typedParams = params as BrowserActionParams;
 
+        console.log(`[browser-tool] execute: action=${typedParams.action}, params=${JSON.stringify(typedParams)}`);
+
         // Check abort signal early
         if (signal?.aborted) {
           return errorResult('Browser action aborted before execution.');
         }
 
-        // Establish browser connection
+        // One-time setup: find browser executable
         try {
           await ensureBrowserReady(signal);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
-          return errorResult(`Browser connection failed: ${message}`);
+          console.log(`[browser-tool] execute: ensureBrowserReady FAILED — ${message}`);
+          return errorResult(`Browser setup failed: ${message}`);
         }
 
         // Dispatch to action handler

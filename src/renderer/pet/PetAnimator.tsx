@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { AgentState } from '../../shared/types';
-import { AGENT_STATE_GIF_MAP } from '../../shared/constants';
+import { buildGifMap, DEFAULT_GIF_PREFIX } from '../../shared/constants';
 
 interface PetAnimatorProps {
   state: AgentState;
@@ -16,6 +16,7 @@ interface PetAnimatorProps {
  * Falls back to idle if the state is not in the GIF map.
  *
  * In multi-pet mode, each pet has a colored border based on its role.
+ * Supports per-profile gifPrefix for different animation sets (e.g. "ikun").
  */
 export const PetAnimator: React.FC<PetAnimatorProps> = ({
   state,
@@ -23,7 +24,12 @@ export const PetAnimator: React.FC<PetAnimatorProps> = ({
   roleColor,
   petName = 'Clawd',
 }) => {
-  const gifFilename = AGENT_STATE_GIF_MAP[state] ?? AGENT_STATE_GIF_MAP[AgentState.IDLE];
+  const gifFilename = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prefix = params.get('gifPrefix') ?? DEFAULT_GIF_PREFIX;
+    const gifMap = buildGifMap(prefix);
+    return gifMap[state] ?? gifMap[AgentState.IDLE];
+  }, [state]);
 
   // Build the GIF URL from the gifsPath query parameter
   const gifUrl = useMemo(() => {
@@ -36,13 +42,7 @@ export const PetAnimator: React.FC<PetAnimatorProps> = ({
     return `${gifsPath}/${gifFilename}`;
   }, [gifFilename]);
 
-  // Border style for role color (subtle glow)
-  const borderStyle: React.CSSProperties = roleColor
-    ? {
-        boxShadow: `0 0 8px 2px ${roleColor}40, 0 0 2px 1px ${roleColor}60`,
-        borderRadius: '50%',
-      }
-    : {};
+  // No decorative border — pet GIF should appear clean without circle frame
 
   return (
     <div
@@ -52,7 +52,6 @@ export const PetAnimator: React.FC<PetAnimatorProps> = ({
         overflow: 'hidden',
         pointerEvents: 'auto',
         position: 'relative',
-        ...borderStyle,
       }}
     >
       <img

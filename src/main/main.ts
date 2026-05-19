@@ -33,7 +33,7 @@ import {
   IPC_CHAT_SLIDE_OUT_COMPLETE,
   MESSAGE_BUFFER_MAX,
 } from '../shared/constants';
-import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig } from '../config/config-store';
+import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig, updateRiskLevel } from '../config/config-store';
 import { registerBlackboardIpcHandlers } from './blackboard-ipc';
 import { MessageRole } from '../shared/types';
 import type {
@@ -43,6 +43,7 @@ import type {
   ToolCardEntry,
   NotificationConfig,
   BrowserConfig,
+  RiskLevel,
   AgentToRendererMessage,
   RendererToAgentMessage,
 } from '../shared/types';
@@ -223,9 +224,14 @@ function computeQuickInputPosition(
 }
 
 function bootstrap(): void {
-  // Drag state: main-process polling via screen.getCursorScreenPoint()
-  let dragOffset: { x: number; y: number } | null = null;
-  let dragInterval: ReturnType<typeof setInterval> | null = null;
+  // Per-pet drag state: main-process polling via screen.getCursorScreenPoint()
+  const dragState = new Map<string, {
+    offset: { x: number; y: number };
+    interval: ReturnType<typeof setInterval>;
+  }>();
+
+  // Set application name so Task Manager shows "pet-lite" instead of "Electron"
+  app.setName('pet-lite');
 
   app.whenReady().then(() => {
     const gifsPath = getGifsBasePath();
@@ -481,67 +487,73 @@ function bootstrap(): void {
       closeQuickInputWindow();
     });
 
-    // Handle IPC from renderer for window control
+    // Handle IPC from renderer for window control (routed by petId)
     ipcMain.on(
       'set-ignore-mouse-events',
-      (_event: Electron.IpcMainEvent, ignore: boolean) => {
-        // Route to the chief pet window
-        const chiefWin = petWindowManager?.getChiefWindow();
-        if (chiefWin) {
-          chiefWin.setIgnoreMouseEvents(ignore, { forward: true });
+      (_event: Electron.IpcMainEvent, ignore: boolean, petId: string) => {
+        const win = petWindowManager?.getWindow(petId);
+        if (win) {
+          win.setIgnoreMouseEvents(ignore, { forward: true });
         }
       }
     );
 
-    // ---- Pet drag via main-process cursor polling ----
+    // ---- Pet drag via main-process cursor polling (per-pet) ----
     ipcMain.on(
       'pet-drag-start',
-      (_event: Electron.IpcMainEvent, offset: { x: number; y: number }) => {
-        const chiefWin = petWindowManager?.getChiefWindow();
-        if (!chiefWin || dragInterval) return;
-        dragOffset = offset;
-        dragInterval = setInterval(() => {
+      (_event: Electron.IpcMainEvent, offset: { x: number; y: number }, petId: string) => {
+        const win = petWindowManager?.getWindow(petId);
+        if (!win || dragState.has(petId)) return;
+        const interval = setInterval(() => {
           try {
-            if (!chiefWin || chiefWin.isDestroyed() || !dragOffset) return;
+            const state = dragState.get(petId);
+            if (!state) return;
+            const w = petWindowManager?.getWindow(petId);
+            if (!w || w.isDestroyed()) {
+              clearInterval(state.interval);
+              dragState.delete(petId);
+              return;
+            }
             const cursor = screen.getCursorScreenPoint();
-            chiefWin.setPosition(
-              Math.round(cursor.x - dragOffset.x),
-              Math.round(cursor.y - dragOffset.y)
+            w.setPosition(
+              Math.round(cursor.x - state.offset.x),
+              Math.round(cursor.y - state.offset.y)
             );
           } catch {
-            if (dragInterval) {
-              clearInterval(dragInterval);
-              dragInterval = null;
+            const state = dragState.get(petId);
+            if (state) {
+              clearInterval(state.interval);
+              dragState.delete(petId);
             }
-            dragOffset = null;
           }
         }, 16);
+        dragState.set(petId, { offset, interval });
       }
     );
 
-    ipcMain.on('pet-drag-end', () => {
-      if (dragInterval) {
-        clearInterval(dragInterval);
-        dragInterval = null;
+    ipcMain.on('pet-drag-end', (_event: Electron.IpcMainEvent, petId: string) => {
+      const state = dragState.get(petId);
+      if (state) {
+        clearInterval(state.interval);
+        dragState.delete(petId);
       }
-      dragOffset = null;
     });
 
     ipcMain.on(
       'move-window',
-      (_event: Electron.IpcMainEvent, deltaX: number, deltaY: number) => {
-        const chiefWin = petWindowManager?.getChiefWindow();
-        if (chiefWin) {
-          const [currentX, currentY] = chiefWin.getPosition();
-          chiefWin.setPosition(currentX + deltaX, currentY + deltaY);
+      (_event: Electron.IpcMainEvent, deltaX: number, deltaY: number, petId: string) => {
+        const win = petWindowManager?.getWindow(petId);
+        if (win) {
+          const [currentX, currentY] = win.getPosition();
+          win.setPosition(currentX + deltaX, currentY + deltaY);
         }
       }
     );
 
-    ipcMain.handle('get-window-position', (): { x: number; y: number } => {
-      const chiefWin = petWindowManager?.getChiefWindow();
-      if (chiefWin) {
-        const [x, y] = chiefWin.getPosition();
+    ipcMain.handle('get-window-position', (_event: Electron.IpcMainInvokeEvent, petId: string): { x: number; y: number } => {
+      const win = petWindowManager?.getWindow(petId);
+      if (win) {
+        const [x, y] = win.getPosition();
         return { x, y };
       }
       return { x: 0, y: 0 };
@@ -732,6 +744,25 @@ function bootstrap(): void {
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           return { success: false, error: message };
+        }
+      }
+    );
+
+    // Risk level config handlers
+    ipcMain.handle('settings:load-risk-level', () => {
+      const config = readConfig();
+      return config.riskLevel;
+    });
+
+    ipcMain.handle(
+      'settings:save-risk-level',
+      (_event: Electron.IpcMainInvokeEvent, level: RiskLevel) => {
+        try {
+          updateRiskLevel(level);
+          return { success: true };
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          return { success: false, error: errorMessage };
         }
       }
     );

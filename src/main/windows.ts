@@ -175,22 +175,30 @@ export function createChatWindow(
 
 /**
  * Show the chat sidebar and trigger slide-in animation via IPC.
- * Repositions to the display nearest to the pet point.
+ *
+ * Repositions to the display nearest to the pet point ONLY when the window
+ * is not already visible (first show or re-show after hide). If the window
+ * is already visible (user may have dragged it to another monitor), we skip
+ * repositioning to respect the user's manual placement.
  */
 export function showChatWindow(petPoint?: { x: number; y: number }): void {
   if (!chatWindow || chatWindow.isDestroyed()) return;
 
-  // Reposition to the display where the pet is
-  const display = petPoint
-    ? screen.getDisplayNearestPoint(petPoint)
-    : screen.getPrimaryDisplay();
-  const wa = display.workArea;
-  const targetX = wa.x + wa.width - CHAT_WINDOW_WIDTH;
-  const targetY = wa.y;
+  const alreadyVisible = chatWindow.isVisible();
 
-  // Use setSize + setPosition separately for reliable cross-monitor resize
-  chatWindow.setSize(CHAT_WINDOW_WIDTH, wa.height);
-  chatWindow.setPosition(targetX, targetY);
+  if (!alreadyVisible) {
+    // Reposition to the display where the pet is
+    const display = petPoint
+      ? screen.getDisplayNearestPoint(petPoint)
+      : screen.getPrimaryDisplay();
+    const wa = display.workArea;
+    const targetX = wa.x + wa.width - CHAT_WINDOW_WIDTH;
+    const targetY = wa.y;
+
+    // Use setSize + setPosition separately for reliable cross-monitor resize
+    chatWindow.setSize(CHAT_WINDOW_WIDTH, wa.height);
+    chatWindow.setPosition(targetX, targetY);
+  }
 
   chatWindow.show();
   chatWindow.webContents.send('chat:slide-in');
