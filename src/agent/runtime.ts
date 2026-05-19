@@ -23,7 +23,7 @@ import { createModel } from './llm';
 import { getLLMConfig } from './llm';
 import { readConfig } from '../config/config-store';
 import { getToolsForProfile, restoreSchedules, setScheduleFireCallback } from './tools/registry';
-import { getDefaultProfile } from './profiles';
+import { getDefaultProfile, getEnabledSpecialistProfiles } from './profiles';
 import { recordExperience, summarizeRecentFailures, buildKnownIssuesText } from './experience';
 
 /** Type aliases for pi-agent-core types (resolved at runtime via dynamic import) */
@@ -173,7 +173,18 @@ export async function createAgentRuntime(
 
   // Use the profile's system prompt, augmented with known failure patterns from experience log
   const knownIssues = buildKnownIssuesText(summarizeRecentFailures());
-  const systemPrompt = resolvedProfile.systemPrompt + knownIssues;
+  let systemPrompt = resolvedProfile.systemPrompt + knownIssues;
+
+  // For Chief profile, inject the current specialist list
+  if (resolvedProfile.role === 'chief') {
+    const specialists = getEnabledSpecialistProfiles();
+    if (specialists.length > 0) {
+      const specialistList = specialists
+        .map((s) => `- **${s.name}** (id: "${s.id}", role: "${s.role}"): tools [${s.toolNames.join(', ')}]`)
+        .join('\n');
+      systemPrompt += `\n\n**Currently available specialists:**\n${specialistList}`;
+    }
+  }
 
   // Track streaming message IDs for the renderer
   let currentAssistantMessageId: string | null = null;

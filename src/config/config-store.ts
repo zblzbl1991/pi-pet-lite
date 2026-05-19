@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
-import { AppConfig, LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel } from '../shared/types';
+import { AppConfig, LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile } from '../shared/types';
 import { CONFIG_FILENAME } from '../shared/constants';
 
 /**
@@ -43,6 +43,7 @@ const DEFAULT_CONFIG: AppConfig = {
     cdpPort: 9222,
   },
   riskLevel: 'medium' as RiskLevel,
+  profiles: [],
 };
 
 /**
@@ -71,6 +72,7 @@ export function readConfig(): AppConfig {
         ...parsed.browser,
       },
       riskLevel: parsed.riskLevel ?? DEFAULT_CONFIG.riskLevel,
+      profiles: parsed.profiles ?? DEFAULT_CONFIG.profiles,
     };
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -143,6 +145,26 @@ export function updateBrowserConfig(browser: Partial<BrowserConfig>): AppConfig 
 export function updateRiskLevel(riskLevel: RiskLevel): AppConfig {
   const current = readConfig();
   const updated: AppConfig = { ...current, riskLevel };
+  writeConfig(updated);
+  return updated;
+}
+
+/**
+ * Update only the profiles section.
+ */
+export function updateProfilesConfig(profiles: PetProfile[]): AppConfig {
+  const current = readConfig();
+  const updated: AppConfig = { ...current, profiles };
+  writeConfig(updated);
+  return updated;
+}
+
+/**
+ * Reset profiles to empty (removes all custom profile overrides).
+ */
+export function resetProfilesConfig(): AppConfig {
+  const current = readConfig();
+  const updated: AppConfig = { ...current, profiles: [] };
   writeConfig(updated);
   return updated;
 }

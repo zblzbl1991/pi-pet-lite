@@ -17,6 +17,7 @@ import { Type } from 'typebox';
 import { PetRole } from '../../shared/types';
 import { DELEGATION_TIMEOUT_MS } from '../../shared/constants';
 import { getBlackboardStore } from '../../storage/blackboard';
+import { getEnabledSpecialistProfiles } from '../profiles';
 import type { PetManager } from '../pet-manager';
 import type { TaskResult } from '../task-queue';
 
@@ -112,16 +113,53 @@ function withTimeout(
 }
 
 // ---------------------------------------------------------------------------
-// Role validation
+// Role validation (dynamic: based on enabled specialist profiles)
 // ---------------------------------------------------------------------------
 
-const VALID_ROLES = new Set<string>([PetRole.CODER, PetRole.SCOUT, PetRole.ANALYST]);
+/** Build the set of valid target roles/ids from currently enabled specialists */
+function getValidRoles(): Set<string> {
+  const roles = new Set<string>();
+  for (const p of getEnabledSpecialistProfiles()) {
+    roles.add(p.role);
+    // Also allow targeting by profile id for custom profiles
+    if (p.role === PetRole.CUSTOM) {
+      roles.add(p.id);
+    }
+  }
+  return roles;
+}
 
 function validateRole(role: string): string | null {
-  if (!VALID_ROLES.has(role)) {
-    return `Invalid target role "${role}". Must be one of: coder, scout, analyst.`;
+  const validRoles = getValidRoles();
+  if (!validRoles.has(role)) {
+    const available = getEnabledSpecialistProfiles()
+      .map((p) => p.role === PetRole.CUSTOM ? `"${p.id}" (${p.name})` : `"${p.role}"`)
+      .join(', ');
+    return `Invalid target role "${role}". Available specialists: ${available || 'none'}.`;
   }
   return null;
+}
+
+/** Build dynamic description listing available specialists */
+function buildDynamicDescription(): string {
+  const specialists = getEnabledSpecialistProfiles();
+  const parts = specialists.map((p) => {
+    if (p.role === PetRole.CUSTOM) {
+      return `"${p.id}" (${p.name}) for custom tasks`;
+    }
+    const roleDesc: Record<string, string> = {
+      coder: 'writing/editing code and running commands',
+      scout: 'web browsing and information gathering',
+      analyst: 'reading files, data analysis, and summarization',
+    };
+    return `"${p.role}" for ${roleDesc[p.role] ?? 'specialized tasks'}`;
+  });
+
+  return 'Delegate a subtask to a specialist pet. ' +
+    'Available specialists: ' + (parts.join(', ') || 'none') + '. ' +
+    'The specialist will execute the task and return the result. ' +
+    'Tasks are processed one at a time (serial). If the specialist fails, ' +
+    'a single retry is attempted automatically.';
 }
 
 // ---------------------------------------------------------------------------
@@ -129,20 +167,18 @@ function validateRole(role: string): string | null {
 // ---------------------------------------------------------------------------
 
 function buildDelegateTaskTool(): PiAgentTool {
+  const specialists = getEnabledSpecialistProfiles();
+  const availableRoles = specialists
+    .map((p) => p.role === PetRole.CUSTOM ? `"${p.id}"` : `"${p.role}"`)
+    .join(', ');
+
   return {
     name: 'delegate_task',
     label: 'Delegate Task',
-    description:
-      'Delegate a subtask to a specialist pet. ' +
-      'Use "coder" for writing/editing code and running commands, ' +
-      '"scout" for web browsing and information gathering, ' +
-      '"analyst" for reading files, data analysis, and summarization. ' +
-      'The specialist will execute the task and return the result. ' +
-      'Tasks are processed one at a time (serial). If the specialist fails, ' +
-      'a single retry is attempted automatically.',
+    description: buildDynamicDescription(),
     parameters: Type.Object({
       target_role: Type.String({
-        description: 'The specialist pet role to delegate to: "coder", "scout", or "analyst"',
+        description: `The specialist to delegate to. Available: ${availableRoles || 'none'}`,
       }),
       task_description: Type.String({
         description: 'Clear, detailed description of the subtask for the specialist to execute',

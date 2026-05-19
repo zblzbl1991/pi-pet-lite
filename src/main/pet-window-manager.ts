@@ -34,6 +34,7 @@ export const PET_ROLE_COLORS: Record<PetRole, string> = {
   coder: '#4a90d9',   // Blue
   scout: '#50b478',   // Green
   analyst: '#9b6dd7', // Purple
+  custom: '#888888',  // Gray
 };
 
 /** Status-based animation label for the renderer */

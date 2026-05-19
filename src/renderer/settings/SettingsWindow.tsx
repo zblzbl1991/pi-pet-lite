@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel } from '../../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole } from '../../shared/types';
+import { TOOL_GROUPS, CUSTOM_PROFILE_DEFAULT_PROMPT, CUSTOM_PROFILE_DEFAULT_TOOLS } from '../../shared/constants';
 
 /** Provider option with display label and available models */
 interface ProviderOption {
@@ -72,7 +73,7 @@ const PROVIDERS: ProviderOption[] = [
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
 /** Sidebar navigation sections */
-type Section = 'llm' | 'browser' | 'notifications' | 'permissions';
+type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets';
 
 const sharedStyles: Record<string, React.CSSProperties> = {
   label: {
@@ -593,6 +594,310 @@ function PermissionsSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Profiles Section — Pet profile management
+// ---------------------------------------------------------------------------
+
+const BUILT_IN_IDS = new Set(['chief', 'coder', 'scout', 'analyst']);
+
+/** All available tools across all groups */
+const ALL_TOOLS = Object.values(TOOL_GROUPS).flatMap((g) => g.tools);
+
+/** Check if a tool belongs to any group */
+function toolHasGroup(tool: string): boolean {
+  return ALL_TOOLS.includes(tool);
+}
+
+function ProfilesSection() {
+  const [profiles, setProfiles] = useState<PetProfile[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  useEffect(() => {
+    window.settingsAPI?.loadProfiles?.().then((p) => {
+      setProfiles(p ?? []);
+      setHasLoaded(true);
+    }).catch(() => setHasLoaded(true));
+  }, []);
+
+  const saveAll = useCallback(async (updated: PetProfile[]) => {
+    if (!window.settingsAPI) return;
+    try {
+      const result = await window.settingsAPI.saveProfiles(updated);
+      setProfiles(updated);
+      setSaveMessage(result.success ? 'Profiles saved' : (result.error || 'Failed to save'));
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : 'Failed to save');
+    }
+    setTimeout(() => setSaveMessage(''), 3000);
+  }, []);
+
+  const handleReset = useCallback(async () => {
+    if (!window.settingsAPI) return;
+    const result = await window.settingsAPI.resetProfiles();
+    if (result.success) {
+      setProfiles([]);
+      setEditingId(null);
+      setSaveMessage('Profiles reset to defaults');
+    } else {
+      setSaveMessage(result.error || 'Failed to reset');
+    }
+    setTimeout(() => setSaveMessage(''), 3000);
+  }, []);
+
+  const toggleEnabled = useCallback((id: string) => {
+    const updated = profiles.map((p) =>
+      p.id === id ? { ...p, enabled: p.enabled === false ? undefined : false as boolean | undefined } : p
+    );
+    saveAll(updated);
+  }, [profiles, saveAll]);
+
+  const updateProfile = useCallback((id: string, changes: Partial<PetProfile>) => {
+    setProfiles((prev) => prev.map((p) => p.id === id ? { ...p, ...changes } : p));
+  }, []);
+
+  const saveProfile = useCallback((id: string) => {
+    const profile = profiles.find((p) => p.id === id);
+    if (!profile) return;
+    // Build the config override entry
+    const entry: PetProfile = { ...profile };
+    // Update or add to profiles list
+    const existing = profiles.findIndex((p) => p.id === id);
+    let updated: PetProfile[];
+    if (existing >= 0) {
+      updated = [...profiles];
+      updated[existing] = entry;
+    } else {
+      updated = [...profiles, entry];
+    }
+    saveAll(updated);
+    setEditingId(null);
+  }, [profiles, saveAll]);
+
+  const createProfile = useCallback(() => {
+    const id = `custom-${Date.now()}`;
+    const newProfile: PetProfile = {
+      id,
+      name: 'New Pet',
+      role: 'custom' as PetRole,
+      systemPrompt: CUSTOM_PROFILE_DEFAULT_PROMPT.replace('{name}', 'New Pet'),
+      toolNames: [...CUSTOM_PROFILE_DEFAULT_TOOLS],
+      enabled: true,
+      icon: 'clawd-idle.gif',
+      gifPrefix: 'clawd',
+    };
+    saveAll([...profiles, newProfile]);
+    setEditingId(id);
+  }, [profiles, saveAll]);
+
+  const deleteProfile = useCallback((id: string) => {
+    const updated = profiles.filter((p) => p.id !== id);
+    saveAll(updated);
+    setConfirmDeleteId(null);
+    if (editingId === id) setEditingId(null);
+  }, [profiles, saveAll, editingId]);
+
+  if (!hasLoaded) {
+    return <div style={{ color: 'rgba(200,200,210,0.6)', textAlign: 'center', marginTop: 40 }}>Loading...</div>;
+  }
+
+  const editing = profiles.find((p) => p.id === editingId);
+
+  return (
+    <>
+      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+        Pet Profiles
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        {profiles.map((p) => {
+          const isBuiltIn = BUILT_IN_IDS.has(p.id);
+          const isDisabled = p.enabled === false;
+          const isEditing = editingId === p.id;
+          const roleColors: Record<string, string> = {
+            chief: '#e8912d', coder: '#4a90d9', scout: '#50b478', analyst: '#9b6dd7', custom: '#888888',
+          };
+          const color = roleColors[p.role] ?? '#888888';
+
+          return (
+            <div key={p.id} style={{
+              padding: '12px 16px',
+              borderRadius: 10,
+              border: `1.5px solid ${isEditing ? color : isDisabled ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)'}`,
+              background: isDisabled ? 'rgba(40,42,48,0.2)' : isEditing ? `${color}0d` : 'rgba(40,42,48,0.5)',
+              opacity: isDisabled ? 0.5 : 1,
+              transition: 'all 0.15s',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 5, background: color, flexShrink: 0 }} />
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#F0F1F2', flex: 1 }}>
+                  {p.name}
+                  <span style={{ fontSize: 11, color: 'rgba(200,200,210,0.4)', marginLeft: 8 }}>
+                    {p.role}{isBuiltIn ? ' (built-in)' : ''}
+                  </span>
+                </span>
+                {!isBuiltIn && p.role !== 'chief' && (
+                  <button onClick={() => setConfirmDeleteId(p.id)} style={{
+                    background: 'none', border: 'none', color: '#d9534f', cursor: 'pointer',
+                    fontSize: 11, padding: '2px 8px', opacity: 0.6,
+                  }}>Delete</button>
+                )}
+                {p.role !== 'chief' && (
+                  <button onClick={() => toggleEnabled(p.id)} style={{
+                    background: 'none', border: 'none', color: isDisabled ? '#5cb85c' : '#d9534f',
+                    cursor: 'pointer', fontSize: 11, padding: '2px 8px',
+                  }}>
+                    {isDisabled ? 'Enable' : 'Disable'}
+                  </button>
+                )}
+                <button onClick={() => setEditingId(isEditing ? null : p.id)} style={{
+                  background: 'none', border: 'none', color: '#4a90d9', cursor: 'pointer',
+                  fontSize: 11, padding: '2px 8px',
+                }}>
+                  {isEditing ? 'Close' : 'Edit'}
+                </button>
+              </div>
+
+              {isEditing && (
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* Name */}
+                  <div style={sharedStyles.field}>
+                    <label style={sharedStyles.label}>Name</label>
+                    <input type="text" value={p.name}
+                      onChange={(e) => updateProfile(p.id, { name: e.target.value })}
+                      style={sharedStyles.input} />
+                  </div>
+
+                  {/* System Prompt */}
+                  <div style={sharedStyles.field}>
+                    <label style={sharedStyles.label}>System Prompt</label>
+                    <textarea value={p.systemPrompt}
+                      onChange={(e) => updateProfile(p.id, { systemPrompt: e.target.value })}
+                      style={{ ...sharedStyles.input, minHeight: 120, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
+                    />
+                  </div>
+
+                  {/* GIF Prefix */}
+                  <div style={sharedStyles.field}>
+                    <label style={sharedStyles.label}>GIF Prefix</label>
+                    <input type="text" value={p.gifPrefix ?? 'clawd'}
+                      onChange={(e) => updateProfile(p.id, { gifPrefix: e.target.value })}
+                      style={{ ...sharedStyles.input, width: 200 }}
+                    />
+                    <div style={sharedStyles.hint}>Determines which GIF set is used for animations.</div>
+                  </div>
+
+                  {/* Tool Groups */}
+                  <div style={sharedStyles.field}>
+                    <label style={sharedStyles.label}>Tools</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {Object.entries(TOOL_GROUPS).map(([groupKey, group]) => (
+                        <div key={groupKey}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(200,200,210,0.7)', marginBottom: 4 }}>
+                            {group.label}
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {group.tools.map((tool) => {
+                              const checked = p.toolNames.includes(tool);
+                              return (
+                                <label key={tool} style={{
+                                  display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+                                  padding: '4px 8px', borderRadius: 6,
+                                  background: checked ? 'rgba(80,180,120,0.15)' : 'rgba(255,255,255,0.03)',
+                                  border: `1px solid ${checked ? 'rgba(80,180,120,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                                  fontSize: 12, color: checked ? '#50b478' : 'rgba(200,200,210,0.5)',
+                                }}>
+                                  <input type="checkbox" checked={checked}
+                                    onChange={() => {
+                                      const newTools = checked
+                                        ? p.toolNames.filter((t) => t !== tool)
+                                        : [...p.toolNames, tool];
+                                      updateProfile(p.id, { toolNames: newTools });
+                                    }}
+                                    style={{ width: 12, height: 12 }}
+                                  />
+                                  {tool}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={sharedStyles.btnRow}>
+                    <button onClick={() => saveProfile(p.id)} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer' }}>
+                      Save
+                    </button>
+                    <button onClick={() => setEditingId(null)} style={{ ...sharedStyles.btn, background: 'rgba(255,255,255,0.1)', color: '#aaa', cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Create new profile button */}
+        <button onClick={createProfile} style={{
+          padding: '10px 16px', borderRadius: 10, border: '1.5px dashed rgba(255,255,255,0.12)',
+          background: 'transparent', color: 'rgba(200,200,210,0.5)', cursor: 'pointer',
+          fontSize: 13, fontWeight: 500, textAlign: 'center',
+        }}>
+          + Add Custom Profile
+        </button>
+      </div>
+
+      <div style={sharedStyles.btnRow}>
+        <button onClick={handleReset} style={{
+          ...sharedStyles.btn, background: 'rgba(255,255,255,0.1)', color: '#aaa', cursor: 'pointer',
+        }}>
+          Reset to Defaults
+        </button>
+      </div>
+
+      <SaveStatus message={saveMessage} />
+
+      {/* Delete confirmation dialog */}
+      {confirmDeleteId && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: '#2a2a30', borderRadius: 12, padding: 24, maxWidth: 360,
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#F0F1F2', marginBottom: 12 }}>
+              Delete Profile?
+            </div>
+            <div style={{ fontSize: 13, color: 'rgba(200,200,210,0.7)', marginBottom: 20 }}>
+              This will permanently remove this custom profile. This action cannot be undone.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDeleteId(null)} style={{
+                ...sharedStyles.btn, background: 'rgba(255,255,255,0.1)', color: '#aaa', cursor: 'pointer',
+              }}>
+                Cancel
+              </button>
+              <button onClick={() => deleteProfile(confirmDeleteId)} style={{
+                ...sharedStyles.btn, background: '#d9534f', color: '#fff', cursor: 'pointer',
+              }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main settings window with sidebar navigation
 // ---------------------------------------------------------------------------
 
@@ -604,6 +909,7 @@ export const SettingsWindow: React.FC = () => {
     { key: 'browser', label: 'Browser' },
     { key: 'notifications', label: 'Notifications' },
     { key: 'permissions', label: 'Permissions' },
+    { key: 'pets', label: 'Pets' },
   ];
 
   return (
@@ -658,6 +964,7 @@ export const SettingsWindow: React.FC = () => {
           {section === 'browser' && <BrowserSection />}
           {section === 'notifications' && <NotificationsSection />}
           {section === 'permissions' && <PermissionsSection />}
+          {section === 'pets' && <ProfilesSection />}
         </div>
       </div>
 

@@ -140,6 +140,42 @@ export const SCHEDULES_FILENAME = 'clawd-schedules.json';
 /** Config file name */
 export const CONFIG_FILENAME = 'clawd-config.json';
 
+/** Tool groups with friendly names for Settings UI */
+export const TOOL_GROUPS: Record<string, { label: string; tools: string[] }> = {
+  'File Operations': {
+    label: 'File Operations',
+    tools: ['read', 'write', 'edit', 'create_directory', 'delete_file'],
+  },
+  'Search': {
+    label: 'Search',
+    tools: ['grep', 'find', 'ls'],
+  },
+  'Shell': {
+    label: 'Shell',
+    tools: ['bash'],
+  },
+  'Browser Automation': {
+    label: 'Browser Automation',
+    tools: ['browser_action'],
+  },
+  'Scheduling': {
+    label: 'Scheduling',
+    tools: ['create_schedule', 'list_schedules', 'delete_schedule'],
+  },
+  'Delegation': {
+    label: 'Delegation & Blackboard',
+    tools: ['delegate_task', 'read_blackboard', 'write_blackboard'],
+  },
+};
+
+/** Default system prompt for newly created custom profiles */
+export const CUSTOM_PROFILE_DEFAULT_PROMPT = `You are {name}, a custom desktop AI assistant in the form of a cat character.
+Your capabilities are defined by the tools available to you.
+Follow user instructions carefully and report results clearly.`;
+
+/** Default tool set for newly created custom profiles */
+export const CUSTOM_PROFILE_DEFAULT_TOOLS = ['read', 'grep', 'find', 'ls'];
+
 /** IPC channels for main↔renderer communication */
 export const IPC_AGENT_MESSAGE = 'agent-message';
 export const IPC_RENDERER_TO_AGENT = 'renderer-to-agent';

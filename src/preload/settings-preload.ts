@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel } from '../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile } from '../shared/types';
 
 /**
  * Preload script for the settings BrowserWindow.
@@ -72,6 +72,24 @@ const api = {
 
   saveRiskLevel(level: RiskLevel): Promise<{ success: boolean; error?: string }> {
     return ipcRenderer.invoke('settings:save-risk-level', level) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  loadProfiles(): Promise<PetProfile[]> {
+    return ipcRenderer.invoke('settings:load-profiles') as Promise<PetProfile[]>;
+  },
+
+  saveProfiles(profiles: PetProfile[]): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('settings:save-profiles', profiles) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  resetProfiles(): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('settings:reset-profiles') as Promise<{
       success: boolean;
       error?: string;
     }>;

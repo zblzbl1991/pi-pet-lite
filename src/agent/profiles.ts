@@ -7,11 +7,13 @@
  * - Trust policy overrides (per-tool trust levels that merge over the global policy)
  * - Optional LLM config overrides (model, provider, apiKey)
  *
- * Backward compatible: when no profile is specified, getDefaultProfile()
- * returns the Chief profile which mirrors the previous flat setup.
+ * Supports both built-in profiles and user-defined custom profiles.
+ * Config overrides are merged over built-in definitions at runtime.
+ * Disabled profiles are excluded from the active set.
  */
 
 import { PetProfile, PetRole } from '../shared/types';
+import { readConfig } from '../config/config-store';
 
 // ---------------------------------------------------------------------------
 // System prompts for each built-in profile
@@ -86,7 +88,6 @@ const CHIEF_PROFILE: PetProfile = {
   role: PetRole.CHIEF,
   systemPrompt: CHIEF_SYSTEM_PROMPT,
   toolNames: [
-    // Delegation and coordination tools (Chief never directly executes)
     'delegate_task',
     'read_blackboard',
     'write_blackboard',
@@ -101,9 +102,7 @@ const CODER_PROFILE: PetProfile = {
   role: PetRole.CODER,
   systemPrompt: CODER_SYSTEM_PROMPT,
   toolNames: [
-    // pi-coding-agent tools
     'read', 'write', 'edit', 'bash', 'grep', 'find', 'ls',
-    // Custom file tools
     'create_directory', 'delete_file',
   ],
   icon: 'clawd-running.gif',
@@ -116,9 +115,7 @@ const SCOUT_PROFILE: PetProfile = {
   role: PetRole.SCOUT,
   systemPrompt: SCOUT_SYSTEM_PROMPT,
   toolNames: [
-    // Browser automation
     'browser_action',
-    // Read-only tools for summarizing gathered info
     'read', 'grep', 'find', 'ls',
   ],
   icon: 'ikun-review.gif',
@@ -132,9 +129,7 @@ const ANALYST_PROFILE: PetProfile = {
   role: PetRole.ANALYST,
   systemPrompt: ANALYST_SYSTEM_PROMPT,
   toolNames: [
-    // Read-only tools
     'read', 'grep', 'find', 'ls',
-    // Scheduler for periodic analysis
     'list_schedules',
   ],
   icon: 'clawd-waiting.gif',
@@ -152,26 +147,82 @@ const BUILT_IN_PROFILES: Record<string, PetProfile> = {
   [ANALYST_PROFILE.id]: ANALYST_PROFILE,
 };
 
+/** IDs of built-in profiles that cannot be deleted (only disabled) */
+export const BUILT_IN_PROFILE_IDS = new Set(Object.keys(BUILT_IN_PROFILES));
+
 /**
- * Get a profile by its id.
- * Returns undefined if the profile id is not found.
+ * Merge a config override on top of a built-in profile.
+ * Only override fields that are explicitly set in the config entry.
+ */
+function mergeProfile(base: PetProfile, override: Partial<PetProfile>): PetProfile {
+  const merged: PetProfile = { ...base };
+  if (override.name !== undefined) merged.name = override.name;
+  if (override.systemPrompt !== undefined) merged.systemPrompt = override.systemPrompt;
+  if (override.toolNames !== undefined) merged.toolNames = override.toolNames;
+  if (override.enabled !== undefined) merged.enabled = override.enabled;
+  if (override.gifPrefix !== undefined) merged.gifPrefix = override.gifPrefix;
+  if (override.icon !== undefined) merged.icon = override.icon;
+  if (override.trustOverrides !== undefined) merged.trustOverrides = override.trustOverrides;
+  if (override.llm !== undefined) merged.llm = override.llm;
+  if (override.skills !== undefined) merged.skills = override.skills;
+  return merged;
+}
+
+/**
+ * Build the merged profile map: built-in profiles with config overrides,
+ * plus any custom profiles from config.
+ */
+function buildProfileMap(): Record<string, PetProfile> {
+  const configProfiles = readConfig().profiles ?? [];
+  const configMap = new Map<string, PetProfile>();
+  for (const p of configProfiles) {
+    configMap.set(p.id, p);
+  }
+
+  // Start with built-in profiles, applying config overrides
+  const result: Record<string, PetProfile> = {};
+  for (const [id, base] of Object.entries(BUILT_IN_PROFILES)) {
+    const override = configMap.get(id);
+    if (override) {
+      result[id] = mergeProfile(base, override);
+    } else {
+      result[id] = { ...base };
+    }
+  }
+
+  // Add custom profiles (role === 'custom') that are not built-in
+  for (const p of configProfiles) {
+    if (!BUILT_IN_PROFILES[p.id]) {
+      result[p.id] = { ...p };
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Get a resolved profile by its id.
+ * Returns undefined if the profile doesn't exist or is disabled.
  */
 export function getProfileById(id: string): PetProfile | undefined {
-  return BUILT_IN_PROFILES[id];
+  const map = buildProfileMap();
+  const profile = map[id];
+  if (!profile || profile.enabled === false) return undefined;
+  return profile;
 }
 
 /**
- * Get all built-in profile ids.
+ * Get all profile ids (including disabled and custom).
  */
 export function getProfileIds(): string[] {
-  return Object.keys(BUILT_IN_PROFILES);
+  return Object.keys(buildProfileMap());
 }
 
 /**
- * Get all built-in profiles as an array.
+ * Get all profiles (including disabled ones) as an array.
  */
 export function getAllProfiles(): PetProfile[] {
-  return Object.values(BUILT_IN_PROFILES);
+  return Object.values(buildProfileMap());
 }
 
 /**
@@ -179,5 +230,24 @@ export function getAllProfiles(): PetProfile[] {
  * This is used when no profile is specified, maintaining backward compatibility.
  */
 export function getDefaultProfile(): PetProfile {
-  return CHIEF_PROFILE;
+  return getProfileById('chief') ?? CHIEF_PROFILE;
+}
+
+/**
+ * Get all enabled specialist profiles (non-chief, enabled).
+ * Used by Chief to know which specialists are available for delegation.
+ */
+export function getEnabledSpecialistProfiles(): PetProfile[] {
+  const map = buildProfileMap();
+  return Object.values(map).filter(
+    (p) => p.role !== PetRole.CHIEF && p.enabled !== false
+  );
+}
+
+/**
+ * Get the built-in profile base (without config overrides).
+ * Used by the Settings UI to show the original definition.
+ */
+export function getBuiltInProfile(id: string): PetProfile | undefined {
+  return BUILT_IN_PROFILES[id] ? { ...BUILT_IN_PROFILES[id] } : undefined;
 }

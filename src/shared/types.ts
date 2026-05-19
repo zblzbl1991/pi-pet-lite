@@ -97,6 +97,7 @@ export const PetRole = {
   CODER: 'coder',
   SCOUT: 'scout',
   ANALYST: 'analyst',
+  CUSTOM: 'custom',
 } as const;
 
 export type PetRole = (typeof PetRole)[keyof typeof PetRole];
@@ -135,6 +136,8 @@ export interface PetProfile {
   icon?: string;
   /** GIF prefix for state animations (e.g. "clawd", "ikun"). Defaults to "clawd". */
   gifPrefix?: string;
+  /** Whether this profile is active. Disabled profiles are excluded from runtime. */
+  enabled?: boolean;
 }
 
 /** Thinking level for agent reasoning */
@@ -175,6 +178,8 @@ export interface AppConfig {
   notifications: NotificationConfig;
   browser: BrowserConfig;
   riskLevel: RiskLevel;
+  /** User-defined profile overrides. Merged over built-in profiles at runtime. */
+  profiles?: PetProfile[];
 }
 
 /** Messages sent from renderer to agent via MessagePort */

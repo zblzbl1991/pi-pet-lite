@@ -33,7 +33,7 @@ import {
   IPC_CHAT_SLIDE_OUT_COMPLETE,
   MESSAGE_BUFFER_MAX,
 } from '../shared/constants';
-import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig, updateRiskLevel } from '../config/config-store';
+import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig, updateRiskLevel, updateProfilesConfig, resetProfilesConfig } from '../config/config-store';
 import { registerBlackboardIpcHandlers } from './blackboard-ipc';
 import { MessageRole } from '../shared/types';
 import type {
@@ -44,6 +44,7 @@ import type {
   NotificationConfig,
   BrowserConfig,
   RiskLevel,
+  PetProfile,
   AgentToRendererMessage,
   RendererToAgentMessage,
 } from '../shared/types';
@@ -766,6 +767,35 @@ function bootstrap(): void {
         }
       }
     );
+
+    // Profiles config handlers
+    ipcMain.handle('settings:load-profiles', () => {
+      const config = readConfig();
+      return config.profiles ?? [];
+    });
+
+    ipcMain.handle(
+      'settings:save-profiles',
+      (_event: Electron.IpcMainInvokeEvent, profiles: PetProfile[]) => {
+        try {
+          updateProfilesConfig(profiles);
+          return { success: true };
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          return { success: false, error: errorMessage };
+        }
+      }
+    );
+
+    ipcMain.handle('settings:reset-profiles', () => {
+      try {
+        resetProfilesConfig();
+        return { success: true };
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        return { success: false, error: errorMessage };
+      }
+    });
 
     ipcMain.on('settings:close', () => {
       const windows = BrowserWindow.getAllWindows();

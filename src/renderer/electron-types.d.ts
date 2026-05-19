@@ -11,6 +11,7 @@ import type {
   NotificationConfig,
   BrowserConfig,
   RiskLevel,
+  PetProfile,
   PetElectronAPI,
   ChatElectronAPI,
   QuickInputElectronAPI,
@@ -32,6 +33,9 @@ export interface SettingsElectronAPI {
   testBrowserConnection: (config: BrowserConfig) => Promise<{ success: boolean; error?: string; browserInfo?: string }>;
   loadRiskLevel: () => Promise<RiskLevel>;
   saveRiskLevel: (level: RiskLevel) => Promise<{ success: boolean; error?: string }>;
+  loadProfiles: () => Promise<PetProfile[]>;
+  saveProfiles: (profiles: PetProfile[]) => Promise<{ success: boolean; error?: string }>;
+  resetProfiles: () => Promise<{ success: boolean; error?: string }>;
   closeWindow: () => void;
 }
 
