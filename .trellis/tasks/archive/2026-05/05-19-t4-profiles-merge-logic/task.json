@@ -3,7 +3,7 @@
   "name": "t4-profiles-merge-logic",
   "title": "T4: profiles.ts — resolveProfile 合并逻辑 + 动态查询",
   "description": "新增resolveProfile(id)合并内置底座+config覆盖。getProfileById对disabled返回undefined。getProfileIds/getAllProfiles动态化。新增getEnabledSpecialistProfiles()。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": "zbl",
   "createdAt": "2026-05-19",
-  "completedAt": null,
+  "completedAt": "2026-05-19",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -20,7 +20,9 @@
   "subtasks": [],
   "children": [],
   "parent": "05-19-pet-profile-configuration",
-  "relatedFiles": ["src/agent/profiles.ts"],
+  "relatedFiles": [
+    "src/agent/profiles.ts"
+  ],
   "notes": "Blocked by: T3",
   "meta": {}
 }
