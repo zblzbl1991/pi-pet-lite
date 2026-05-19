@@ -3,7 +3,7 @@
   "name": "t5-runtime-specialist-injection",
   "title": "T5: runtime.ts — Chief 启动自动注入 specialist 列表",
   "description": "createAgentRuntime()中: chief角色的systemPrompt末尾追加动态specialist段落, 从getEnabledSpecialistProfiles()获取列表。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": "zbl",
   "createdAt": "2026-05-19",
-  "completedAt": null,
+  "completedAt": "2026-05-19",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -20,7 +20,9 @@
   "subtasks": [],
   "children": [],
   "parent": "05-19-pet-profile-configuration",
-  "relatedFiles": ["src/agent/runtime.ts"],
+  "relatedFiles": [
+    "src/agent/runtime.ts"
+  ],
   "notes": "Blocked by: T4",
   "meta": {}
 }
