@@ -3,7 +3,7 @@
   "name": "t3-config-store-profiles",
   "title": "T3: config-store.ts — profiles 默认值、合并、updateProfilesConfig",
   "description": "DEFAULT_CONFIG新增profiles:[], readConfig()合并profiles字段, 新增updateProfilesConfig()和resetProfilesConfig()。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": "zbl",
   "createdAt": "2026-05-19",
-  "completedAt": null,
+  "completedAt": "2026-05-19",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -20,7 +20,9 @@
   "subtasks": [],
   "children": [],
   "parent": "05-19-pet-profile-configuration",
-  "relatedFiles": ["src/config/config-store.ts"],
+  "relatedFiles": [
+    "src/config/config-store.ts"
+  ],
   "notes": "Blocked by: T1",
   "meta": {}
 }
