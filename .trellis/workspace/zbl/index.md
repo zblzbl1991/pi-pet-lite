@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
-- **Last Active**: 2026-05-19
+- **Total Sessions**: 7
+- **Last Active**: 2026-05-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~215 | Active |
+| `journal-1.md` | ~250 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-05-20 | Design system token migration (Phase 1-4) | `74dfa84`, `864d40d`, `a9e5cc7` | `master` |
 | 6 | 2026-05-19 | Pet Profile Configuration System (T1-T9) | `92fa093` | `master` |
 | 5 | 2026-05-19 | Design Impeccable 文档更新与 Trellis 配置维护 | `1fca205`, `35a05a0` | `master` |
 | 4 | 2026-05-19 | M1-M6 milestones + browser migration + spec bootstrap | `0c14bc8`, `7203846`, `e1c34dd` | `master` |
