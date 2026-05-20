@@ -18,6 +18,9 @@ src/renderer/
 ├── index.tsx                   # Pet window React entry
 ├── env.d.ts                    # Vite client types
 ├── electron-types.d.ts         # Global Window type declarations
+├── styles/
+│   ├── tokens.css              # CSS custom properties (colors, spacing, radii, typography, motion, glass)
+│   └── reset.css               # Global reset, font-family, base typography, scrollbar, keyframe animations
 ├── pet/
 │   ├── PetWindow.tsx           # Main pet overlay component
 │   ├── PetAnimator.tsx         # GIF display by agent state

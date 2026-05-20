@@ -6,7 +6,7 @@
 
 ## Overview
 
-All components are functional React components using named exports. No class components, no default exports. Styling is done entirely with inline `style` objects — no CSS files, Tailwind, or CSS modules.
+All components are functional React components using named exports. No class components, no default exports. Styling uses inline `style` objects that reference **CSS custom property tokens** (`var(--*)`) defined in `src/renderer/styles/tokens.css`. The design system source of truth is `.impeccable.md`.
 
 ---
 
@@ -64,13 +64,15 @@ function StatusBlock({ status, message }: { status: string; message: string }) {
 
 ## Styling Patterns
 
-**Pattern 1**: Top-level constant style objects
+**Pattern 1**: Top-level constant style objects with token references
 ```typescript
 const containerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   height: '100vh',
-  background: '#1e1f22',
+  background: 'var(--bg-page)',
+  color: 'var(--text-primary)',
+  fontFamily: 'var(--font-body)',
 };
 ```
 
@@ -78,9 +80,10 @@ const containerStyle: React.CSSProperties = {
 ```typescript
 const bubbleStyle = (role: string): React.CSSProperties => ({
   maxWidth: '85%',
-  padding: '8px 12px',
-  borderRadius: 12,
+  padding: 'var(--space-3)',
+  borderRadius: 'var(--radius-lg)',
   alignSelf: role === MessageRole.USER ? 'flex-end' : 'flex-start',
+  background: role === MessageRole.USER ? 'var(--color-brand)' : 'var(--bg-card)',
 });
 ```
 
@@ -89,34 +92,45 @@ const bubbleStyle = (role: string): React.CSSProperties => ({
 style={{ cursor: isDragging ? 'grabbing' : 'pointer' }}
 ```
 
-**CSS animations**: Injected via `<style>` tags in JSX.
+**CSS animations**: Keyframe animations defined in `src/renderer/styles/reset.css` and referenced via `animation` property.
 
 ---
 
-## Color Palette
+## Design Tokens
 
+All design values (colors, spacing, radii, typography, motion, glass effects) are defined as CSS custom properties in `src/renderer/styles/tokens.css`. Reference them via `var(--token-name)` in inline styles.
+
+**Source of truth**: `.impeccable.md`
+
+### Token Categories
+
+| Category | Examples | Prefix |
+|----------|----------|--------|
+| Background colors | `var(--bg-page)`, `var(--bg-card)`, `var(--bg-elevated)` | `--bg-*` |
+| Text colors | `var(--text-primary)`, `var(--text-secondary)`, `var(--text-tertiary)` | `--text-*` |
+| Brand & semantic | `var(--color-brand)`, `var(--color-success)`, `var(--color-warning)`, `var(--color-danger)` | `--color-*` |
+| Role colors | `var(--role-chief)`, `var(--role-coder)`, `var(--role-scout)`, `var(--role-analyst)` | `--role-*` |
+| Spacing (4px grid) | `var(--space-1)`(4px) through `var(--space-12)`(48px) | `--space-*` |
+| Border radius | `var(--radius-sm)`, `var(--radius-md)`, `var(--radius-lg)`, `var(--radius-pill)` | `--radius-*` |
+| Typography | `var(--font-body)`, `var(--font-mono)`, `var(--text-sm)`, `var(--font-semibold)` | `--font-*`, `--text-*` |
+| Motion | `var(--duration-fast)`, `var(--duration-normal)`, `var(--ease-out)` | `--duration-*`, `--ease-*` |
+| Glass effects | `var(--glass-blur)`, `var(--glass-bg)`, `var(--glass-border)` | `--glass-*` |
+| Borders | `var(--border)`, `var(--border-subtle)` | `--border*` |
+
+### Main Process Colors
+
+For main process code (BrowserWindow configs, tray), use named constants from `src/shared/theme-constants.ts`:
 ```typescript
-const colors = {
-  bgDarkest: '#1a1c1f',
-  bgDark: '#1e1f22',
-  bgMid: '#25262a',
-  bgLight: '#2a2c30',
-  textPrimary: '#F0F1F2',
-  textSecondary: 'rgba(200, 200, 210, 0.8)',
-  green: '#50b478',
-  greenLight: '#5cb85c',
-  warning: '#f0ad4e',
-  error: '#d9534f',
-  border: 'rgba(255, 255, 255, 0.08)',
-  font: "'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
-};
+import { THEME_PAGE_BG, THEME_TRAY_ICON } from '../shared/theme-constants';
 ```
 
 ---
 
 ## Common Mistakes
 
-- Don't add CSS files or Tailwind — this project uses inline styles exclusively
+- Don't hardcode hex/rgba colors or pixel spacing — use `var(--*)` tokens from `tokens.css`
+- Don't add CSS files beyond `tokens.css` and `reset.css` — no Tailwind, no CSS modules
 - Don't use default exports — always named exports
 - Don't create shared component libraries across windows — each window is independent
 - Don't use class components
+- Don't use pure black (`#000`) — use slate-tinted darks from the design system
