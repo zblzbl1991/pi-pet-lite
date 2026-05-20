@@ -1,5 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import '../styles/tokens.css';
+import '../styles/reset.css';
 import { SettingsWindow } from './SettingsWindow';
 
 const container = document.getElementById('root');

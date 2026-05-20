@@ -1,4 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Cpu,
+  Globe,
+  Bell,
+  Shield,
+  Bot,
+  Save,
+  Plug,
+  Eye,
+  EyeOff,
+  Trash2,
+  Plus,
+  RotateCcw,
+  X,
+  AlertTriangle,
+} from 'lucide-react';
 import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole } from '../../shared/types';
 import { TOOL_GROUPS, CUSTOM_PROFILE_DEFAULT_PROMPT, CUSTOM_PROFILE_DEFAULT_TOOLS } from '../../shared/constants';
 
@@ -78,32 +94,32 @@ type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets';
 const sharedStyles: Record<string, React.CSSProperties> = {
   label: {
     display: 'block',
-    fontSize: 11,
-    fontWeight: 500,
-    color: 'rgba(200, 200, 210, 0.8)',
-    marginBottom: 6,
+    fontSize: 'var(--text-xs)',
+    fontWeight: 'var(--font-medium)',
+    color: 'var(--text-secondary)',
+    marginBottom: 'var(--space-2)',
     textTransform: 'uppercase' as const,
-    letterSpacing: '0.5px',
+    letterSpacing: 'var(--tracking-wide)',
   },
   input: {
     width: '100%',
-    padding: '10px 12px',
-    background: 'rgba(40, 42, 48, 0.9)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: 8,
-    color: '#F0F1F2',
-    fontSize: 14,
+    padding: 'var(--space-3) var(--space-3)',
+    background: 'var(--bg-elevated)',
+    border: `1px solid var(--border)`,
+    borderRadius: 'var(--radius-md)',
+    color: 'var(--text-primary)',
+    fontSize: 'var(--text-base)',
     fontFamily: 'inherit',
     outline: 'none',
   },
   select: {
     width: '100%',
-    padding: '10px 12px',
-    background: 'rgba(40, 42, 48, 0.9)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: 8,
-    color: '#F0F1F2',
-    fontSize: 14,
+    padding: 'var(--space-3) var(--space-3)',
+    background: 'var(--bg-elevated)',
+    border: `1px solid var(--border)`,
+    borderRadius: 'var(--radius-md)',
+    color: 'var(--text-primary)',
+    fontSize: 'var(--text-base)',
     fontFamily: 'inherit',
     outline: 'none',
     cursor: 'pointer',
@@ -111,57 +127,57 @@ const sharedStyles: Record<string, React.CSSProperties> = {
     WebkitAppearance: 'none' as const,
     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23aaa' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E")`,
     backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'right 12px center',
-    paddingRight: 32,
+    backgroundPosition: 'right var(--space-3) center',
+    paddingRight: 'var(--space-8)',
   },
   hint: {
-    fontSize: 11,
-    color: 'rgba(200, 200, 210, 0.5)',
-    marginTop: 4,
+    fontSize: 'var(--text-xs)',
+    color: 'var(--text-tertiary)',
+    marginTop: 'var(--space-1)',
   },
   field: {
-    marginBottom: 16,
+    marginBottom: 'var(--space-4)',
   },
   btnRow: {
     display: 'flex',
-    gap: 12,
-    marginTop: 24,
+    gap: 'var(--space-3)',
+    marginTop: 'var(--space-6)',
   },
   btn: {
-    padding: '10px 24px',
+    padding: 'var(--space-3) var(--space-6)',
     border: 'none',
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 500,
+    borderRadius: 'var(--radius-md)',
+    fontSize: 'var(--text-base)',
+    fontWeight: 'var(--font-medium)',
     cursor: 'pointer',
     fontFamily: 'inherit',
-    transition: 'opacity 0.15s ease',
+    transition: 'opacity var(--duration-fast) var(--ease-default)',
   },
   btnSave: {
-    background: 'rgba(80, 180, 120, 0.9)',
+    background: 'var(--success)',
     color: '#fff',
   },
   btnTest: {
-    background: 'rgba(60, 120, 200, 0.8)',
+    background: 'var(--brand)',
     color: '#fff',
   },
   statusMsg: {
-    marginTop: 12,
-    fontSize: 13,
-    padding: '8px 12px',
-    borderRadius: 6,
+    marginTop: 'var(--space-3)',
+    fontSize: 'var(--text-xs)',
+    padding: 'var(--space-2) var(--space-3)',
+    borderRadius: 'var(--radius-sm)',
   },
   successMsg: {
-    color: '#5cb85c',
-    background: 'rgba(92, 184, 92, 0.1)',
+    color: 'var(--success)',
+    background: 'var(--success-bg)',
   },
   errorMsg: {
-    color: '#d9534f',
-    background: 'rgba(217, 83, 79, 0.1)',
+    color: 'var(--danger)',
+    background: 'var(--danger-bg)',
   },
   infoMsg: {
-    color: '#f0ad4e',
-    background: 'rgba(240, 173, 78, 0.1)',
+    color: 'var(--warning)',
+    background: 'var(--warning-bg)',
   },
 };
 
@@ -271,12 +287,12 @@ function LLMSection() {
   }, [provider, effectiveModel, apiKey]);
 
   if (!hasLoaded) {
-    return <div style={{ color: 'rgba(200,200,210,0.6)', textAlign: 'center', marginTop: 40 }}>Loading...</div>;
+    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>Loading...</div>;
   }
 
   return (
     <>
-      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+      <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
         LLM Configuration
       </div>
 
@@ -305,7 +321,7 @@ function LLMSection() {
             {isCustomModel && (
               <>
                 <input type="text" value={customModelValue} onChange={(e) => { setCustomModelValue(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }}
-                  placeholder="Enter custom model name" style={{ ...sharedStyles.input, marginTop: 8 }} />
+                  placeholder="Enter custom model name" style={{ ...sharedStyles.input, marginTop: 'var(--space-2)' }} />
                 <div style={sharedStyles.hint}>Enter any model name supported by {currentProvider.label}</div>
               </>
             )}
@@ -326,8 +342,8 @@ function LLMSection() {
             onChange={(e) => { setApiKey(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }}
             placeholder="Enter your API key" style={{ ...sharedStyles.input, paddingRight: 60 }} />
           <button onClick={() => setShowApiKey((p) => !p)}
-            style={{ position: 'absolute', right: 8, background: 'none', border: 'none', color: 'rgba(200,200,210,0.6)', cursor: 'pointer', padding: '4px 8px', fontSize: 12 }}>
-            {showApiKey ? 'Hide' : 'Show'}
+            style={{ position: 'absolute', right: 'var(--space-2)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 'var(--space-1) var(--space-2)', display: 'flex', alignItems: 'center' }}>
+            {showApiKey ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
           </button>
         </div>
       </div>
@@ -342,12 +358,12 @@ function LLMSection() {
 
       <div style={sharedStyles.btnRow}>
         <button onClick={handleSave} disabled={!isFormValid}
-          style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, opacity: isFormValid ? 1 : 0.4, cursor: isFormValid ? 'pointer' : 'not-allowed' }}>
-          Save
+          style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, opacity: isFormValid ? 1 : 0.4, cursor: isFormValid ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+          <Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Save
         </button>
         <button onClick={handleTest} disabled={!isFormValid || connectionStatus === 'testing'}
-          style={{ ...sharedStyles.btn, ...sharedStyles.btnTest, opacity: isFormValid && connectionStatus !== 'testing' ? 1 : 0.5, cursor: isFormValid && connectionStatus !== 'testing' ? 'pointer' : 'not-allowed' }}>
-          {connectionStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+          style={{ ...sharedStyles.btn, ...sharedStyles.btnTest, opacity: isFormValid && connectionStatus !== 'testing' ? 1 : 0.5, cursor: isFormValid && connectionStatus !== 'testing' ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+          <Plug size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> {connectionStatus === 'testing' ? 'Testing...' : 'Test Connection'}
         </button>
       </div>
 
@@ -395,7 +411,7 @@ function BrowserSection() {
 
   return (
     <>
-      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+      <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
         Browser
       </div>
 
@@ -420,10 +436,10 @@ function BrowserSection() {
       </div>
 
       <div style={sharedStyles.btnRow}>
-        <button onClick={handleSave} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer' }}>Save</button>
+        <button onClick={handleSave} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Save</button>
         <button onClick={handleTest} disabled={connStatus === 'testing'}
-          style={{ ...sharedStyles.btn, ...sharedStyles.btnTest, opacity: connStatus === 'testing' ? 0.5 : 1, cursor: connStatus === 'testing' ? 'not-allowed' : 'pointer' }}>
-          {connStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+          style={{ ...sharedStyles.btn, ...sharedStyles.btnTest, opacity: connStatus === 'testing' ? 0.5 : 1, cursor: connStatus === 'testing' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+          <Plug size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> {connStatus === 'testing' ? 'Testing...' : 'Test Connection'}
         </button>
       </div>
 
@@ -456,35 +472,35 @@ function NotificationsSection() {
 
   return (
     <>
-      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+      <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
         Notifications
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {[
           { key: 'systemToast' as const, label: 'System Toast', hint: 'Windows notification when task completes' },
           { key: 'petBubble' as const, label: 'Pet Bubble', hint: 'Show result summary above the pet' },
           { key: 'petAnimation' as const, label: 'Pet Animation', hint: 'Play success/failure animation on the pet' },
         ].map(({ key, label, hint }) => (
-          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+          <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer' }}>
             <input type="checkbox" checked={notifConfig[key]} onChange={() => toggle(key)}
-              style={{ width: 16, height: 16, cursor: 'pointer' }} />
+              style={{ width: 'var(--space-4)', height: 'var(--space-4)', cursor: 'pointer' }} />
             <div>
-              <div style={{ fontSize: 14, color: '#F0F1F2' }}>{label}</div>
-              <div style={{ fontSize: 11, color: 'rgba(200,200,210,0.5)' }}>{hint}</div>
+              <div style={{ fontSize: 'var(--text-base)', color: 'var(--text-primary)' }}>{label}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{hint}</div>
             </div>
           </label>
         ))}
       </div>
 
       {allOff && (
-        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 6, background: 'rgba(240,173,78,0.1)', color: '#f0ad4e', fontSize: 12 }}>
-          All notifications are off — you won&apos;t be reminded when tasks complete.
+        <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--warning-bg)', color: 'var(--warning)', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <AlertTriangle size={14} strokeWidth={1.5} /> All notifications are off — you won&apos;t be reminded when tasks complete.
         </div>
       )}
 
       {saveMessage && (
-        <div style={{ marginTop: 8, fontSize: 12, color: saveMessage.includes('Failed') ? '#d9534f' : '#5cb85c' }}>
+        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-sm)', color: saveMessage.includes('Failed') ? 'var(--danger)' : 'var(--success)' }}>
           {saveMessage}
         </div>
       )}
@@ -513,21 +529,21 @@ function PermissionsSection() {
     {
       value: 'low',
       label: 'Low Risk',
-      color: '#5cb85c',
+      color: 'var(--success)',
       hint: 'All tools require confirmation',
       description: 'Every tool call (including read-only operations) will ask for your approval before executing. Safest mode, suitable for first-time users or sensitive environments.',
     },
     {
       value: 'medium',
       label: 'Medium Risk',
-      color: '#f0ad4e',
+      color: 'var(--warning)',
       hint: 'Critical tools require confirmation',
       description: 'Read-only tools execute automatically. Write, edit, bash, and browser operations still require your approval. Balanced mode for daily use.',
     },
     {
       value: 'high',
       label: 'High Risk',
-      color: '#d9534f',
+      color: 'var(--danger)',
       hint: 'No confirmation needed',
       description: 'All tools execute automatically without any confirmation. Most autonomous mode, suitable when you trust the agent to act independently.',
     },
@@ -535,11 +551,11 @@ function PermissionsSection() {
 
   return (
     <>
-      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+      <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
         Permissions
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {options.map((opt) => {
           const selected = riskLevel === opt.value;
           return (
@@ -547,30 +563,30 @@ function PermissionsSection() {
               key={opt.value}
               onClick={() => handleChange(opt.value)}
               style={{
-                padding: '14px 16px',
-                borderRadius: 10,
-                border: `1.5px solid ${selected ? opt.color : 'rgba(255,255,255,0.08)'}`,
-                background: selected ? `${opt.color}12` : 'rgba(40,42,48,0.5)',
+                padding: 'var(--space-4) var(--space-4)',
+                borderRadius: 'var(--radius-nav)',
+                border: `1.5px solid ${selected ? opt.color : 'var(--border-subtle)'}`,
+                background: selected ? `${opt.color}12` : 'var(--bg-elevated)',
                 cursor: 'pointer',
-                transition: 'all 0.15s',
+                transition: 'all var(--duration-fast)',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
                 <div style={{
-                  width: 12, height: 12, borderRadius: 6,
-                  border: `2px solid ${selected ? opt.color : 'rgba(255,255,255,0.2)'}`,
+                  width: 'var(--space-3)', height: 'var(--space-3)', borderRadius: 'var(--radius-sm)',
+                  border: `2px solid ${selected ? opt.color : 'var(--border)'}`,
                   background: selected ? opt.color : 'transparent',
-                  transition: 'all 0.15s',
+                  transition: 'all var(--duration-fast)',
                   flexShrink: 0,
                 }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: selected ? '#F0F1F2' : 'rgba(200,200,210,0.7)' }}>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-semibold)', color: selected ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                   {opt.label}
                 </span>
-                <span style={{ fontSize: 11, color: `${opt.color}bb`, marginLeft: 'auto' }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: `${opt.color}bb`, marginLeft: 'auto' }}>
                   {opt.hint}
                 </span>
               </div>
-              <div style={{ fontSize: 12, color: 'rgba(200,200,210,0.5)', paddingLeft: 22, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', paddingLeft: 'var(--space-6)', lineHeight: 'var(--leading-relaxed)' }}>
                 {opt.description}
               </div>
             </div>
@@ -579,13 +595,13 @@ function PermissionsSection() {
       </div>
 
       {riskLevel === 'high' && (
-        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 6, background: 'rgba(217,83,79,0.1)', color: '#d9534f', fontSize: 12 }}>
-          Warning: High risk mode allows the agent to execute all operations without confirmation, including file deletion and shell commands.
+        <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--danger-bg)', color: 'var(--danger)', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <AlertTriangle size={14} strokeWidth={1.5} /> Warning: High risk mode allows the agent to execute all operations without confirmation, including file deletion and shell commands.
         </div>
       )}
 
       {saveMessage && (
-        <div style={{ marginTop: 8, fontSize: 12, color: saveMessage.includes('Failed') ? '#d9534f' : '#5cb85c' }}>
+        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-sm)', color: saveMessage.includes('Failed') ? 'var(--danger)' : 'var(--success)' }}>
           {saveMessage}
         </div>
       )}
@@ -699,68 +715,69 @@ function ProfilesSection() {
   }, [profiles, saveAll, editingId]);
 
   if (!hasLoaded) {
-    return <div style={{ color: 'rgba(200,200,210,0.6)', textAlign: 'center', marginTop: 40 }}>Loading...</div>;
+    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>Loading...</div>;
   }
 
   const editing = profiles.find((p) => p.id === editingId);
 
   return (
     <>
-      <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: '#F0F1F2' }}>
+      <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
         Pet Profiles
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
         {profiles.map((p) => {
           const isBuiltIn = BUILT_IN_IDS.has(p.id);
           const isDisabled = p.enabled === false;
           const isEditing = editingId === p.id;
           const roleColors: Record<string, string> = {
-            chief: '#e8912d', coder: '#4a90d9', scout: '#50b478', analyst: '#9b6dd7', custom: '#888888',
+            chief: 'var(--role-chief)', coder: 'var(--role-coder)', scout: 'var(--role-scout)', analyst: 'var(--role-analyst)', custom: 'var(--role-custom)',
           };
-          const color = roleColors[p.role] ?? '#888888';
+          const color = roleColors[p.role] ?? 'var(--role-custom)';
 
           return (
             <div key={p.id} style={{
-              padding: '12px 16px',
-              borderRadius: 10,
-              border: `1.5px solid ${isEditing ? color : isDisabled ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)'}`,
-              background: isDisabled ? 'rgba(40,42,48,0.2)' : isEditing ? `${color}0d` : 'rgba(40,42,48,0.5)',
+              padding: 'var(--space-3) var(--space-4)',
+              borderRadius: 'var(--radius-nav)',
+              border: `1.5px solid ${isEditing ? color : isDisabled ? 'var(--border-subtle)' : 'var(--border-subtle)'}`,
+              background: isDisabled ? 'var(--bg-elevated)' : isEditing ? `${color}0d` : 'var(--bg-elevated)',
               opacity: isDisabled ? 0.5 : 1,
-              transition: 'all 0.15s',
+              transition: 'all var(--duration-fast)',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 5, background: color, flexShrink: 0 }} />
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#F0F1F2', flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div style={{ width: 'var(--space-3)', height: 'var(--space-3)', borderRadius: 'var(--space-1)', background: color, flexShrink: 0 }} />
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', flex: 1 }}>
                   {p.name}
-                  <span style={{ fontSize: 11, color: 'rgba(200,200,210,0.4)', marginLeft: 8 }}>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginLeft: 'var(--space-2)' }}>
                     {p.role}{isBuiltIn ? ' (built-in)' : ''}
                   </span>
                 </span>
                 {!isBuiltIn && p.role !== 'chief' && (
                   <button onClick={() => setConfirmDeleteId(p.id)} style={{
-                    background: 'none', border: 'none', color: '#d9534f', cursor: 'pointer',
-                    fontSize: 11, padding: '2px 8px', opacity: 0.6,
-                  }}>Delete</button>
+                    background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer',
+                    fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)', opacity: 0.6,
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                  }}><Trash2 size={12} strokeWidth={1.5} /> Delete</button>
                 )}
                 {p.role !== 'chief' && (
                   <button onClick={() => toggleEnabled(p.id)} style={{
-                    background: 'none', border: 'none', color: isDisabled ? '#5cb85c' : '#d9534f',
-                    cursor: 'pointer', fontSize: 11, padding: '2px 8px',
+                    background: 'none', border: 'none', color: isDisabled ? 'var(--success)' : 'var(--danger)',
+                    cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)',
                   }}>
                     {isDisabled ? 'Enable' : 'Disable'}
                   </button>
                 )}
                 <button onClick={() => setEditingId(isEditing ? null : p.id)} style={{
-                  background: 'none', border: 'none', color: '#4a90d9', cursor: 'pointer',
-                  fontSize: 11, padding: '2px 8px',
+                  background: 'none', border: 'none', color: 'var(--role-coder)', cursor: 'pointer',
+                  fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)',
                 }}>
                   {isEditing ? 'Close' : 'Edit'}
                 </button>
               </div>
 
               {isEditing && (
-                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                   {/* Name */}
                   <div style={sharedStyles.field}>
                     <label style={sharedStyles.label}>Name</label>
@@ -774,7 +791,7 @@ function ProfilesSection() {
                     <label style={sharedStyles.label}>System Prompt</label>
                     <textarea value={p.systemPrompt}
                       onChange={(e) => updateProfile(p.id, { systemPrompt: e.target.value })}
-                      style={{ ...sharedStyles.input, minHeight: 120, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
+                      style={{ ...sharedStyles.input, minHeight: 120, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}
                     />
                   </div>
 
@@ -783,7 +800,7 @@ function ProfilesSection() {
                     <label style={sharedStyles.label}>GIF Prefix</label>
                     <input type="text" value={p.gifPrefix ?? 'clawd'}
                       onChange={(e) => updateProfile(p.id, { gifPrefix: e.target.value })}
-                      style={{ ...sharedStyles.input, width: 200 }}
+                      style={{ ...sharedStyles.input, width: 200 }} // specific layout width
                     />
                     <div style={sharedStyles.hint}>Determines which GIF set is used for animations.</div>
                   </div>
@@ -791,22 +808,22 @@ function ProfilesSection() {
                   {/* Tool Groups */}
                   <div style={sharedStyles.field}>
                     <label style={sharedStyles.label}>Tools</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                       {Object.entries(TOOL_GROUPS).map(([groupKey, group]) => (
                         <div key={groupKey}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(200,200,210,0.7)', marginBottom: 4 }}>
+                          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>
                             {group.label}
                           </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
                             {group.tools.map((tool) => {
                               const checked = p.toolNames.includes(tool);
                               return (
                                 <label key={tool} style={{
-                                  display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
-                                  padding: '4px 8px', borderRadius: 6,
-                                  background: checked ? 'rgba(80,180,120,0.15)' : 'rgba(255,255,255,0.03)',
-                                  border: `1px solid ${checked ? 'rgba(80,180,120,0.3)' : 'rgba(255,255,255,0.06)'}`,
-                                  fontSize: 12, color: checked ? '#50b478' : 'rgba(200,200,210,0.5)',
+                                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer',
+                                  padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)',
+                                  background: checked ? 'var(--success-bg)' : 'var(--border-subtle)',
+                                  border: `1px solid ${checked ? 'var(--success)' : 'var(--border-subtle)'}`,
+                                  fontSize: 'var(--text-sm)', color: checked ? 'var(--success)' : 'var(--text-tertiary)',
                                 }}>
                                   <input type="checkbox" checked={checked}
                                     onChange={() => {
@@ -815,7 +832,7 @@ function ProfilesSection() {
                                         : [...p.toolNames, tool];
                                       updateProfile(p.id, { toolNames: newTools });
                                     }}
-                                    style={{ width: 12, height: 12 }}
+                                    style={{ width: 'var(--space-3)', height: 'var(--space-3)' }}
                                   />
                                   {tool}
                                 </label>
@@ -828,11 +845,11 @@ function ProfilesSection() {
                   </div>
 
                   <div style={sharedStyles.btnRow}>
-                    <button onClick={() => saveProfile(p.id)} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer' }}>
-                      Save
+                    <button onClick={() => saveProfile(p.id)} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                      <Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Save
                     </button>
-                    <button onClick={() => setEditingId(null)} style={{ ...sharedStyles.btn, background: 'rgba(255,255,255,0.1)', color: '#aaa', cursor: 'pointer' }}>
-                      Cancel
+                    <button onClick={() => setEditingId(null)} style={{ ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                      <X size={14} strokeWidth={1.5} /> Cancel
                     </button>
                   </div>
                 </div>
@@ -843,19 +860,21 @@ function ProfilesSection() {
 
         {/* Create new profile button */}
         <button onClick={createProfile} style={{
-          padding: '10px 16px', borderRadius: 10, border: '1.5px dashed rgba(255,255,255,0.12)',
-          background: 'transparent', color: 'rgba(200,200,210,0.5)', cursor: 'pointer',
-          fontSize: 13, fontWeight: 500, textAlign: 'center',
+          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-nav)', border: `1.5px dashed var(--border)`,
+          background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer',
+          fontSize: 'var(--text-xs)', fontWeight: 'var(--font-medium)', textAlign: 'center',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
         }}>
-          + Add Custom Profile
+          <Plus size={14} strokeWidth={1.5} /> Add Custom Profile
         </button>
       </div>
 
       <div style={sharedStyles.btnRow}>
         <button onClick={handleReset} style={{
-          ...sharedStyles.btn, background: 'rgba(255,255,255,0.1)', color: '#aaa', cursor: 'pointer',
+          ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
         }}>
-          Reset to Defaults
+          <RotateCcw size={14} strokeWidth={1.5} /> Reset to Defaults
         </button>
       </div>
 
@@ -865,29 +884,31 @@ function ProfilesSection() {
       {confirmDeleteId && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', // kept as overlay scrim
           zIndex: 1000,
         }}>
           <div style={{
-            background: '#2a2a30', borderRadius: 12, padding: 24, maxWidth: 360,
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: 360,
+            border: `1px solid var(--border)`,
           }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#F0F1F2', marginBottom: 12 }}>
+            <div style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
               Delete Profile?
             </div>
-            <div style={{ fontSize: 13, color: 'rgba(200,200,210,0.7)', marginBottom: 20 }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: 'var(--space-5)' }}>
               This will permanently remove this custom profile. This action cannot be undone.
             </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
               <button onClick={() => setConfirmDeleteId(null)} style={{
-                ...sharedStyles.btn, background: 'rgba(255,255,255,0.1)', color: '#aaa', cursor: 'pointer',
+                ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
               }}>
-                Cancel
+                <X size={14} strokeWidth={1.5} /> Cancel
               </button>
               <button onClick={() => deleteProfile(confirmDeleteId)} style={{
-                ...sharedStyles.btn, background: '#d9534f', color: '#fff', cursor: 'pointer',
+                ...sharedStyles.btn, background: 'var(--danger)', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
               }}>
-                Delete
+                <Trash2 size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Delete
               </button>
             </div>
           </div>
@@ -904,12 +925,12 @@ function ProfilesSection() {
 export const SettingsWindow: React.FC = () => {
   const [section, setSection] = useState<Section>('llm');
 
-  const navItems: { key: Section; label: string }[] = [
-    { key: 'llm', label: 'LLM' },
-    { key: 'browser', label: 'Browser' },
-    { key: 'notifications', label: 'Notifications' },
-    { key: 'permissions', label: 'Permissions' },
-    { key: 'pets', label: 'Pets' },
+  const navItems: { key: Section; label: string; icon: React.ReactNode }[] = [
+    { key: 'llm', label: 'LLM', icon: <Cpu size={16} strokeWidth={1.5} /> },
+    { key: 'browser', label: 'Browser', icon: <Globe size={16} strokeWidth={1.5} /> },
+    { key: 'notifications', label: 'Notifications', icon: <Bell size={16} strokeWidth={1.5} /> },
+    { key: 'permissions', label: 'Permissions', icon: <Shield size={16} strokeWidth={1.5} /> },
+    { key: 'pets', label: 'Pets', icon: <Bot size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -917,10 +938,10 @@ export const SettingsWindow: React.FC = () => {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Sidebar */}
         <div style={{
-          width: 160,
-          background: '#1e1e24',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          padding: '16px 0',
+          width: 160, // fixed sidebar width per design spec
+          background: 'var(--bg-sidebar)',
+          borderRight: `1px solid var(--border-subtle)`,
+          padding: 'var(--space-4) 0',
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -930,36 +951,40 @@ export const SettingsWindow: React.FC = () => {
               key={item.key}
               onClick={() => setSection(item.key)}
               style={{
-                padding: '10px 20px',
-                fontSize: 13,
-                fontWeight: 500,
+                padding: 'var(--space-3) var(--space-5)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'var(--font-medium)',
                 cursor: 'pointer',
                 borderLeft: '2px solid transparent',
-                color: section === item.key ? '#F0F1F2' : 'rgba(200,200,210,0.5)',
-                borderLeftColor: section === item.key ? '#50b478' : 'transparent',
-                background: section === item.key ? 'rgba(80,180,120,0.08)' : 'transparent',
-                transition: 'all 0.15s',
+                color: section === item.key ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                borderLeftColor: section === item.key ? 'var(--success)' : 'transparent',
+                background: section === item.key ? 'var(--nav-active)' : 'transparent',
+                transition: 'all var(--duration-fast)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
               }}
               onMouseEnter={(e) => {
                 if (section !== item.key) {
-                  (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.03)';
-                  (e.currentTarget as HTMLDivElement).style.color = 'rgba(200,200,210,0.8)';
+                  (e.currentTarget as HTMLDivElement).style.background = 'var(--nav-hover)';
+                  (e.currentTarget as HTMLDivElement).style.color = 'var(--text-secondary)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (section !== item.key) {
                   (e.currentTarget as HTMLDivElement).style.background = 'transparent';
-                  (e.currentTarget as HTMLDivElement).style.color = 'rgba(200,200,210,0.5)';
+                  (e.currentTarget as HTMLDivElement).style.color = 'var(--text-tertiary)';
                 }
               }}
             >
+              {item.icon}
               {item.label}
             </div>
           ))}
         </div>
 
         {/* Content area */}
-        <div style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
+        <div style={{ flex: 1, padding: 'var(--space-6) var(--space-8)', overflowY: 'auto' }}>
           {section === 'llm' && <LLMSection />}
           {section === 'browser' && <BrowserSection />}
           {section === 'notifications' && <NotificationsSection />}
@@ -970,10 +995,10 @@ export const SettingsWindow: React.FC = () => {
 
       {/* Footer */}
       <div style={{
-        padding: '10px 28px',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
-        fontSize: 11,
-        color: 'rgba(200,200,210,0.4)',
+        padding: 'var(--space-3) var(--space-8)',
+        borderTop: `1px solid var(--border-subtle)`,
+        fontSize: 'var(--text-xs)',
+        color: 'var(--text-tertiary)',
       }}>
         Your API key is stored locally on this device and never sent to our servers.
       </div>

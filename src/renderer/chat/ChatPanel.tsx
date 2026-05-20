@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
+  Send,
+  Square,
+  X,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
+import {
   ChatMessage,
   ChatEntry,
   ToolCardEntry,
@@ -363,8 +374,8 @@ export const ChatPanel: React.FC = () => {
       {/* Header */}
       <div style={headerStyle}>
         <span style={dotStyle} />
-        <span style={{ fontWeight: 600, marginLeft: 8 }}>Clawd</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: '#666' }}>
+        <span style={{ fontWeight: 'var(--font-semibold)', marginLeft: 'var(--space-2)' }}>Clawd</span>
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
           Desktop AI Assistant
         </span>
         <button
@@ -372,7 +383,7 @@ export const ChatPanel: React.FC = () => {
           style={closeButtonStyle}
           title="Close sidebar"
         >
-          x
+          <X size={16} strokeWidth={1.5} />
         </button>
       </div>
 
@@ -402,10 +413,10 @@ export const ChatPanel: React.FC = () => {
             const summary = getToolSummary(entry.toolName, entry.toolArgs, entry.toolResult || '');
             const statusColor =
               entry.toolStatus === 'running'
-                ? '#f0ad4e'
+                ? 'var(--warning)'
                 : entry.toolStatus === 'done'
-                  ? '#5cb85c'
-                  : '#d9534f';
+                  ? 'var(--success)'
+                  : 'var(--danger)';
             const statusLabel =
               entry.toolStatus === 'running'
                 ? 'Running'
@@ -420,7 +431,13 @@ export const ChatPanel: React.FC = () => {
                   style={toolCardHeaderStyle}
                   onClick={() => toggleCardCollapse(entry.toolCallId)}
                 >
-                  <span style={{ ...toolCardDotStyle, background: statusColor }} />
+                  {entry.toolStatus === 'running' ? (
+                    <Loader2 size={14} strokeWidth={2} style={{ color: statusColor, animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
+                  ) : entry.toolStatus === 'done' ? (
+                    <CheckCircle size={14} strokeWidth={2} style={{ color: statusColor, flexShrink: 0 }} />
+                  ) : (
+                    <AlertCircle size={14} strokeWidth={2} style={{ color: statusColor, flexShrink: 0 }} />
+                  )}
                   <span style={toolCardNameStyle}>{entry.toolName}</span>
                   <span style={toolCardStatusLabel}>{statusLabel}</span>
                   {entry.duration != null && (
@@ -429,7 +446,10 @@ export const ChatPanel: React.FC = () => {
                   {cardState.collapsed && (
                     <span style={toolCardSummaryStyle}>{summary}</span>
                   )}
-                  <span style={toolCardChevronStyle}>{cardState.collapsed ? '+' : '-'}</span>
+                  {cardState.collapsed
+                    ? <ChevronRight size={14} strokeWidth={1.5} style={toolCardChevronStyle} />
+                    : <ChevronDown size={14} strokeWidth={1.5} style={toolCardChevronStyle} />
+                  }
                 </div>
 
                 {/* Expandable content */}
@@ -476,6 +496,7 @@ export const ChatPanel: React.FC = () => {
         {confirmation && (
           <div style={confirmCardStyle}>
             <div style={confirmTitleStyle}>
+              <AlertTriangle size={14} strokeWidth={1.5} style={{ color: 'var(--warning)', verticalAlign: 'middle', marginRight: 'var(--space-1)' }} />
               Confirm: {confirmation.toolName}
             </div>
             <div style={confirmArgsStyle}>
@@ -521,7 +542,8 @@ export const ChatPanel: React.FC = () => {
             onClick={handleAbort}
             title="Stop generating"
           >
-            Stop
+            <Square size={14} strokeWidth={2} style={{ color: '#fff' }} />
+            <span style={{ marginLeft: 'var(--space-1)' }}>Stop</span>
           </button>
         ) : (
           <button
@@ -529,7 +551,8 @@ export const ChatPanel: React.FC = () => {
             onClick={handleSend}
             disabled={!inputText.trim()}
           >
-            Send
+            <Send size={14} strokeWidth={2} style={{ color: '#fff' }} />
+            <span style={{ marginLeft: 'var(--space-1)' }}>Send</span>
           </button>
         )}
       </div>
@@ -543,39 +566,41 @@ const containerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   height: '100vh',
-  background: '#1e1f22',
-  color: '#e0e0e0',
-  fontFamily: "'Segoe UI', -apple-system, sans-serif",
-  borderLeft: '1px solid #444',
+  background: 'var(--glass-bg)',
+  backdropFilter: `blur(var(--glass-blur))`,
+  WebkitBackdropFilter: `blur(var(--glass-blur))`,
+  color: 'var(--text-primary)',
+  fontFamily: 'var(--font-body)',
+  borderLeft: `1px solid var(--glass-border)`,
   transform: 'translateX(100%)',
-  transition: 'transform 250ms ease-out',
+  transition: 'transform var(--duration-slow) var(--ease-out)',
 };
 
 const headerStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  background: '#25262a',
-  borderBottom: '1px solid #333',
+  padding: 'var(--space-3) var(--space-4)',
+  background: 'var(--bg-header)',
+  borderBottom: `1px solid var(--border)`,
   display: 'flex',
   alignItems: 'center',
-  fontSize: 13,
+  fontSize: 'var(--text-xs)',
   WebkitAppRegion: 'drag',
 } as React.CSSProperties;
 
 const dotStyle: React.CSSProperties = {
-  width: 8,
-  height: 8,
+  width: 'var(--space-2)',
+  height: 'var(--space-2)',
   borderRadius: '50%',
-  background: '#5cb85c',
+  background: 'var(--success)',
   display: 'inline-block',
 };
 
 const messagesStyle: React.CSSProperties = {
   flex: 1,
   overflowY: 'auto',
-  padding: 12,
+  padding: 'var(--space-3)',
   display: 'flex',
   flexDirection: 'column',
-  gap: 10,
+  gap: 'var(--space-3)',
 };
 
 const emptyStateStyle: React.CSSProperties = {
@@ -583,23 +608,23 @@ const emptyStateStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: '#555',
-  fontSize: 14,
+  color: 'var(--text-tertiary)',
+  fontSize: 'var(--text-base)',
 };
 
 const bubbleStyle = (role: string): React.CSSProperties => ({
   maxWidth: '85%',
-  padding: '8px 12px',
-  borderRadius: 12,
-  fontSize: 13,
-  lineHeight: 1.5,
+  padding: 'var(--space-2) var(--space-3)',
+  borderRadius: 'var(--radius-lg)',
+  fontSize: 'var(--text-xs)',
+  lineHeight: 'var(--leading-relaxed)',
   alignSelf: role === MessageRole.USER ? 'flex-end' : 'flex-start',
   background:
     role === MessageRole.USER
-      ? '#3a6b4f'
-      : '#2a2c30',
+      ? 'var(--role-scout)'
+      : 'var(--bg-input)',
   border: 'none',
-  color: '#e0e0e0',
+  color: 'var(--text-primary)',
   fontFamily: 'inherit',
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
@@ -607,12 +632,12 @@ const bubbleStyle = (role: string): React.CSSProperties => ({
 
 const thinkingBlockStyle: React.CSSProperties = {
   fontStyle: 'italic',
-  color: 'rgba(180, 180, 200, 0.5)',
-  fontSize: 12,
-  lineHeight: 1.4,
-  marginBottom: 6,
-  paddingBottom: 6,
-  borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+  color: 'var(--text-tertiary)',
+  fontSize: 'var(--text-sm)',
+  lineHeight: 'var(--leading-normal)',
+  marginBottom: 'var(--space-2)',
+  paddingBottom: 'var(--space-2)',
+  borderBottom: `1px solid var(--border-subtle)`,
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
 };
@@ -620,9 +645,9 @@ const thinkingBlockStyle: React.CSSProperties = {
 const cursorStyle: React.CSSProperties = {
   display: 'inline-block',
   width: 2,
-  height: 14,
-  background: '#5cb85c',
-  marginLeft: 2,
+  height: 'var(--text-sm)',
+  background: 'var(--success)',
+  marginLeft: 'var(--space-1)',
   verticalAlign: 'text-bottom',
   animation: 'blink 0.8s ease-in-out infinite',
 };
@@ -631,8 +656,8 @@ const cursorStyle: React.CSSProperties = {
 const turnSeparatorStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  padding: '4px 0',
+  gap: 'var(--space-2)',
+  padding: 'var(--space-1) 0',
   alignSelf: 'center',
   width: '80%',
 };
@@ -640,23 +665,23 @@ const turnSeparatorStyle: React.CSSProperties = {
 const turnLineStyle: React.CSSProperties = {
   flex: 1,
   height: 1,
-  background: 'rgba(255, 255, 255, 0.1)',
+  background: 'var(--border)',
 };
 
 const turnLabelStyle: React.CSSProperties = {
-  fontSize: 10,
-  color: 'rgba(255, 255, 255, 0.3)',
+  fontSize: 'var(--text-xs)',
+  color: 'var(--text-tertiary)',
   textTransform: 'uppercase',
-  letterSpacing: 0.5,
+  letterSpacing: 'var(--tracking-wide)',
   whiteSpace: 'nowrap',
 };
 
 // Tool card styles
 const toolCardStyle: React.CSSProperties = {
   alignSelf: 'flex-start',
-  background: 'rgba(40, 42, 48, 0.95)',
-  border: '1px solid rgba(255, 255, 255, 0.08)',
-  borderRadius: 10,
+  background: 'var(--bg-elevated)',
+  border: `1px solid var(--border-subtle)`,
+  borderRadius: 'var(--radius-nav)',
   maxWidth: '95%',
   minWidth: 200,
 };
@@ -664,8 +689,8 @@ const toolCardStyle: React.CSSProperties = {
 const toolCardHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 6,
-  padding: '8px 12px',
+  gap: 'var(--space-2)',
+  padding: 'var(--space-2) var(--space-3)',
   cursor: 'pointer',
   userSelect: 'none',
   WebkitAppRegion: 'no-drag',
@@ -680,63 +705,63 @@ const toolCardDotStyle: React.CSSProperties = {
 };
 
 const toolCardNameStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#e0e0e0',
+  fontSize: 'var(--text-sm)',
+  fontWeight: 'var(--font-semibold)',
+  color: 'var(--text-primary)',
 };
 
 const toolCardStatusLabel: React.CSSProperties = {
-  fontSize: 10,
-  color: 'rgba(200, 200, 210, 0.5)',
+  fontSize: 'var(--text-xs)',
+  color: 'var(--text-tertiary)',
 };
 
 const toolCardDurationStyle: React.CSSProperties = {
-  fontSize: 10,
-  color: 'rgba(200, 200, 210, 0.4)',
+  fontSize: 'var(--text-xs)',
+  color: 'var(--text-tertiary)',
 };
 
 const toolCardSummaryStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: 'rgba(200, 200, 210, 0.6)',
+  fontSize: 'var(--text-xs)',
+  color: 'var(--text-secondary)',
   flex: 1,
   minWidth: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
-  marginLeft: 4,
+  marginLeft: 'var(--space-1)',
 };
 
 const toolCardChevronStyle: React.CSSProperties = {
-  fontSize: 14,
-  color: 'rgba(200, 200, 210, 0.4)',
+  fontSize: 'var(--text-base)',
+  color: 'var(--text-tertiary)',
   marginLeft: 'auto',
   flexShrink: 0,
 };
 
 const toolCardContentStyle: React.CSSProperties = {
-  borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-  padding: '6px 12px 10px',
+  borderTop: `1px solid var(--border-subtle)`,
+  padding: 'var(--space-2) var(--space-3) var(--space-3)',
 };
 
 const toolCardSectionStyle: React.CSSProperties = {
-  marginBottom: 6,
+  marginBottom: 'var(--space-2)',
 };
 
 const toolCardSectionLabelStyle: React.CSSProperties = {
-  fontSize: 10,
-  color: 'rgba(200, 200, 210, 0.4)',
+  fontSize: 'var(--text-xs)',
+  color: 'var(--text-tertiary)',
   textTransform: 'uppercase',
-  letterSpacing: 0.5,
-  marginBottom: 3,
+  letterSpacing: 'var(--tracking-wide)',
+  marginBottom: 'var(--space-1)',
 };
 
 const toolCardPreStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontFamily: 'monospace',
-  color: 'rgba(200, 200, 210, 0.7)',
-  background: 'rgba(0, 0, 0, 0.2)',
-  borderRadius: 6,
-  padding: '6px 8px',
+  fontSize: 'var(--text-xs)',
+  fontFamily: 'var(--font-mono)',
+  color: 'var(--text-secondary)',
+  background: 'var(--bg-page)',
+  borderRadius: 'var(--radius-sm)',
+  padding: 'var(--space-2) var(--space-2)',
   margin: 0,
   maxHeight: 200,
   overflow: 'auto',
@@ -745,12 +770,12 @@ const toolCardPreStyle: React.CSSProperties = {
 };
 
 const toolCardResultStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontFamily: 'monospace',
-  color: 'rgba(200, 200, 210, 0.7)',
-  background: 'rgba(0, 0, 0, 0.2)',
-  borderRadius: 6,
-  padding: '6px 8px',
+  fontSize: 'var(--text-xs)',
+  fontFamily: 'var(--font-mono)',
+  color: 'var(--text-secondary)',
+  background: 'var(--bg-page)',
+  borderRadius: 'var(--radius-sm)',
+  padding: 'var(--space-2) var(--space-2)',
   maxHeight: 300,
   overflow: 'auto',
   whiteSpace: 'pre-wrap',
@@ -759,102 +784,106 @@ const toolCardResultStyle: React.CSSProperties = {
 
 const confirmCardStyle: React.CSSProperties = {
   alignSelf: 'flex-start',
-  background: 'rgba(50, 40, 20, 0.95)',
-  border: '1px solid rgba(240, 173, 78, 0.3)',
-  borderRadius: 10,
-  padding: '10px 14px',
+  background: 'var(--warning-bg)',
+  border: `1px solid var(--warning)`,
+  borderRadius: 'var(--radius-nav)',
+  padding: 'var(--space-3) var(--space-4)',
   maxWidth: 320,
 };
 
 const confirmTitleStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: '#f0ad4e',
-  marginBottom: 4,
-  fontWeight: 600,
+  fontSize: 'var(--text-sm)',
+  color: 'var(--warning)',
+  marginBottom: 'var(--space-1)',
+  fontWeight: 'var(--font-semibold)',
 };
 
 const confirmArgsStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: 'rgba(200, 200, 210, 0.8)',
-  fontFamily: 'monospace',
+  fontSize: 'var(--text-xs)',
+  color: 'var(--text-secondary)',
+  fontFamily: 'var(--font-mono)',
   wordBreak: 'break-all',
 };
 
 const confirmButtonsStyle: React.CSSProperties = {
   display: 'flex',
-  gap: 8,
-  marginTop: 8,
+  gap: 'var(--space-2)',
+  marginTop: 'var(--space-2)',
   justifyContent: 'flex-end',
 };
 
 const denyButtonStyle: React.CSSProperties = {
-  background: 'rgba(217, 83, 79, 0.8)',
+  background: 'var(--danger)',
   border: 'none',
-  borderRadius: 6,
+  borderRadius: 'var(--radius-sm)',
   color: '#fff',
-  padding: '4px 12px',
-  fontSize: 12,
+  padding: 'var(--space-1) var(--space-3)',
+  fontSize: 'var(--text-sm)',
   cursor: 'pointer',
 };
 
 const allowButtonStyle: React.CSSProperties = {
-  background: 'rgba(80, 180, 120, 0.8)',
+  background: 'var(--success)',
   border: 'none',
-  borderRadius: 6,
+  borderRadius: 'var(--radius-sm)',
   color: '#fff',
-  padding: '4px 12px',
-  fontSize: 12,
+  padding: 'var(--space-1) var(--space-3)',
+  fontSize: 'var(--text-sm)',
   cursor: 'pointer',
 };
 
 const inputContainerStyle: React.CSSProperties = {
-  padding: '10px 12px',
-  borderTop: '1px solid #333',
+  padding: 'var(--space-3) var(--space-3)',
+  borderTop: `1px solid var(--border)`,
   display: 'flex',
-  gap: 8,
+  gap: 'var(--space-2)',
 };
 
 const inputStyle: React.CSSProperties = {
   flex: 1,
-  background: '#2a2c30',
-  border: '1px solid #444',
-  borderRadius: 8,
-  padding: '8px 12px',
-  color: '#e0e0e0',
-  fontSize: 13,
+  background: 'var(--bg-input)',
+  border: `1px solid var(--border)`,
+  borderRadius: 'var(--radius-md)',
+  padding: 'var(--space-2) var(--space-3)',
+  color: 'var(--text-primary)',
+  fontSize: 'var(--text-xs)',
   outline: 'none',
 };
 
 const sendButtonStyle: React.CSSProperties = {
-  background: '#5cb85c',
+  background: 'var(--success)',
   border: 'none',
-  borderRadius: 8,
-  padding: '8px 14px',
+  borderRadius: 'var(--radius-md)',
+  padding: 'var(--space-2) var(--space-4)',
   color: '#fff',
-  fontSize: 12,
+  fontSize: 'var(--text-sm)',
   cursor: 'pointer',
   opacity: 1,
+  display: 'flex',
+  alignItems: 'center',
 };
 
 const stopButtonStyle: React.CSSProperties = {
-  background: '#d9534f',
+  background: 'var(--danger)',
   border: 'none',
-  borderRadius: 8,
-  padding: '8px 14px',
+  borderRadius: 'var(--radius-md)',
+  padding: 'var(--space-2) var(--space-4)',
   color: '#fff',
-  fontSize: 12,
+  fontSize: 'var(--text-sm)',
   cursor: 'pointer',
   minWidth: 52,
+  display: 'flex',
+  alignItems: 'center',
 };
 
 const closeButtonStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
-  color: '#888',
-  fontSize: 16,
+  color: 'var(--text-tertiary)',
+  fontSize: 'var(--text-lg)',
   cursor: 'pointer',
-  marginLeft: 8,
-  padding: '0 4px',
+  marginLeft: 'var(--space-2)',
+  padding: '0 var(--space-1)',
   lineHeight: 1,
   WebkitAppRegion: 'no-drag',
 } as React.CSSProperties;

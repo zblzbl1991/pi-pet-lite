@@ -10,12 +10,12 @@ import type { PetElectronAPI, PetConfig } from '../../shared/types';
 const PetNameLabel: React.FC<{ name: string; color: string }> = ({ name, color }) => (
   <div
     style={{
-      fontSize: 10,
-      fontWeight: 600,
+      fontSize: 'var(--text-xs)',
+      fontWeight: 'var(--font-semibold)',
       color: color,
       textAlign: 'center',
-      marginTop: 2,
-      letterSpacing: 0.5,
+      marginTop: 'var(--space-1)',
+      letterSpacing: 'var(--tracking-wide)',
       textTransform: 'uppercase',
       opacity: 0.8,
     }}
@@ -27,24 +27,24 @@ const PetNameLabel: React.FC<{ name: string; color: string }> = ({ name, color }
 /** Status badge for sub-pets */
 const StatusBadge: React.FC<{ animation: string }> = ({ animation }) => {
   const colorMap: Record<string, string> = {
-    idle: '#888',
-    thinking: '#f0ad4e',
-    executing: '#4a90d9',
-    success: '#50b478',
-    error: '#d9534f',
+    idle: 'var(--role-custom)',
+    thinking: 'var(--warning)',
+    executing: 'var(--role-coder)',
+    success: 'var(--success)',
+    error: 'var(--danger)',
   };
 
   return (
     <div
       style={{
         position: 'absolute',
-        top: 4,
-        right: 4,
-        width: 8,
-        height: 8,
+        top: 'var(--space-1)',
+        right: 'var(--space-1)',
+        width: 'var(--space-2)',
+        height: 'var(--space-2)',
         borderRadius: '50%',
-        background: colorMap[animation] ?? '#888',
-        boxShadow: `0 0 4px ${colorMap[animation] ?? '#888'}80`,
+        background: colorMap[animation] ?? 'var(--role-custom)',
+        boxShadow: `0 0 var(--space-1) ${colorMap[animation] ?? 'var(--role-custom)'}80`,
       }}
     />
   );
@@ -57,16 +57,16 @@ const PetTooltip: React.FC<{ text: string; visible: boolean }> = ({ text, visibl
       position: 'absolute',
       top: -32,
       left: '50%',
-      transform: `translateX(-50%) ${visible ? 'translateY(0)' : 'translateY(4px)'}`,
-      background: 'rgba(26, 28, 31, 0.95)',
-      color: '#F0F1F2',
-      border: '1px solid rgba(255, 255, 255, 0.1)',
-      borderRadius: 8,
-      padding: '4px 10px',
-      fontSize: 11,
+      transform: `translateX(-50%) ${visible ? 'translateY(0)' : 'translateY(var(--space-1))'}`,
+      background: 'var(--glass-bg)',
+      color: 'var(--text-primary)',
+      border: `1px solid var(--glass-border)`,
+      borderRadius: 'var(--radius-md)',
+      padding: 'var(--space-1) var(--space-3)',
+      fontSize: 'var(--text-xs)',
       whiteSpace: 'nowrap',
       opacity: visible ? 1 : 0,
-      transition: 'opacity 0.2s ease, transform 0.2s ease',
+      transition: `opacity var(--duration-normal) var(--ease-out), transform var(--duration-normal) var(--ease-out)`,
       pointerEvents: 'none',
       zIndex: 100,
     }}
@@ -311,7 +311,7 @@ export const PetWindow: React.FC = () => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'flex-end',
-        paddingTop: 10,
+        paddingTop: 'var(--space-3)',
         position: 'relative',
       }}
     >

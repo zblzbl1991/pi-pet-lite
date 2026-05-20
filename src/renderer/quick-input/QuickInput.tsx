@@ -30,7 +30,7 @@ export const QuickInput: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 4,
+        padding: 'var(--space-1)',
       }}
     >
       <input
@@ -43,16 +43,16 @@ export const QuickInput: React.FC = () => {
         style={{
           width: '100%',
           height: 40,
-          padding: '0 14px',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: 12,
-          background: 'rgba(26, 28, 31, 0.92)',
-          backdropFilter: 'blur(8px)',
-          color: '#e0e0e0',
-          fontSize: 14,
-          fontFamily: "'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
+          padding: '0 var(--space-4)',
+          border: `1px solid var(--glass-border)`,
+          borderRadius: 'var(--radius-lg)',
+          background: 'var(--glass-bg)',
+          backdropFilter: `blur(var(--glass-blur))`,
+          color: 'var(--text-primary)',
+          fontSize: 'var(--text-base)',
+          fontFamily: 'var(--font-body)',
           outline: 'none',
-          WebkitBackdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: `blur(var(--glass-blur))`,
         }}
       />
     </div>

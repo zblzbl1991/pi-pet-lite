@@ -1,4 +1,5 @@
 import { Tray, Menu, app, nativeImage } from 'electron';
+import { THEME_TRAY_ICON } from '../shared/theme-constants';
 
 let tray: Tray | null = null;
 
@@ -21,9 +22,9 @@ export function createTray(
       const dist = Math.sqrt(cx * cx + cy * cy);
       if (dist < size / 2 - 1) {
         // Green circle
-        buffer[offset] = 80; // R
-        buffer[offset + 1] = 180; // G
-        buffer[offset + 2] = 120; // B
+        buffer[offset] = THEME_TRAY_ICON.r; // R
+        buffer[offset + 1] = THEME_TRAY_ICON.g; // G
+        buffer[offset + 2] = THEME_TRAY_ICON.b; // B
         buffer[offset + 3] = 255; // A
       } else {
         buffer[offset + 3] = 0; // Transparent

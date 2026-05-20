@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle, Loader2, CheckCircle, AlertCircle, X, Check } from 'lucide-react';
 
 interface ConfirmationRequest {
   toolCallId: string;
@@ -47,15 +48,15 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
     <div
       style={{
         position: 'relative',
-        marginBottom: 8,
+        marginBottom: 'var(--space-2)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         opacity: isVisible ? 1 : 0,
         transform: isVisible
           ? 'translateY(0) scale(1)'
-          : 'translateY(8px) scale(0.95)',
-        transition: 'opacity 0.25s ease, transform 0.25s ease',
+          : 'translateY(var(--space-2)) scale(0.95)',
+        transition: 'opacity var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out)',
         pointerEvents: isVisible ? 'auto' : 'none',
       }}
     >
@@ -63,18 +64,18 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       {message && (
         <div
           style={{
-            background: 'rgba(26, 28, 31, 0.92)',
-            color: '#F0F1F2',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: 14,
-            padding: '10px 16px',
-            fontSize: 13,
+            background: 'var(--glass-bg)',
+            color: 'var(--text-primary)',
+            border: `1px solid var(--glass-border)`,
+            borderRadius: 'var(--radius-btn)',
+            padding: 'var(--space-3) var(--space-4)',
+            fontSize: 'var(--text-xs)',
             maxWidth: 280,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            lineHeight: 1.4,
-            backdropFilter: 'blur(8px)',
+            lineHeight: 'var(--leading-normal)',
+            backdropFilter: `blur(var(--glass-blur))`,
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
           }}
           title={message}
@@ -86,9 +87,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
               style={{
                 display: 'inline-block',
                 width: 2,
-                height: 14,
-                background: 'rgba(80, 180, 120, 0.9)',
-                marginLeft: 2,
+                height: 'var(--text-sm)',
+                background: 'var(--success)',
+                marginLeft: 'var(--space-1)',
                 verticalAlign: 'text-bottom',
                 animation: 'blink 0.8s ease-in-out infinite',
               }}
@@ -101,32 +102,26 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       {toolStatus && !confirmation && (
         <div
           style={{
-            marginTop: 4,
-            background: 'rgba(40, 42, 48, 0.9)',
-            color: 'rgba(200, 200, 210, 0.9)',
-            borderRadius: 8,
-            padding: '6px 12px',
-            fontSize: 11,
-            fontFamily: 'monospace',
-            backdropFilter: 'blur(8px)',
+            marginTop: 'var(--space-1)',
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-secondary)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-3)',
+            fontSize: 'var(--text-xs)',
+            fontFamily: 'var(--font-mono)',
+            backdropFilter: `blur(var(--glass-blur))`,
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
+            gap: 'var(--space-2)',
           }}
         >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background:
-                toolStatus.status === 'running'
-                  ? '#f0ad4e'
-                  : toolStatus.status === 'done'
-                    ? '#5cb85c'
-                    : '#d9534f',
-            }}
-          />
+          {toolStatus.status === 'running' ? (
+            <Loader2 size={12} strokeWidth={2} style={{ color: 'var(--warning)', animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
+          ) : toolStatus.status === 'done' ? (
+            <CheckCircle size={12} strokeWidth={2} style={{ color: 'var(--success)', flexShrink: 0 }} />
+          ) : (
+            <AlertCircle size={12} strokeWidth={2} style={{ color: 'var(--danger)', flexShrink: 0 }} />
+          )}
           {toolStatus.status === 'running'
             ? 'Running'
             : toolStatus.status === 'done'
@@ -140,31 +135,34 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       {confirmation && (
         <div
           style={{
-            marginTop: 4,
-            background: 'rgba(50, 40, 20, 0.95)',
-            border: '1px solid rgba(240, 173, 78, 0.3)',
-            borderRadius: 10,
-            padding: '8px 12px',
+            marginTop: 'var(--space-1)',
+            background: 'var(--warning-bg)',
+            border: `1px solid var(--warning)`,
+            borderRadius: 'var(--radius-nav)',
+            padding: 'var(--space-2) var(--space-3)',
             maxWidth: 300,
-            backdropFilter: 'blur(8px)',
+            backdropFilter: `blur(var(--glass-blur))`,
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
           }}
         >
           <div
             style={{
-              fontSize: 12,
-              color: '#f0ad4e',
-              marginBottom: 4,
-              fontWeight: 600,
+              fontSize: 'var(--text-sm)',
+              color: 'var(--warning)',
+              marginBottom: 'var(--space-1)',
+              fontWeight: 'var(--font-semibold)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-1)',
             }}
           >
-            Confirm: {confirmation.toolName}
+            <AlertTriangle size={12} strokeWidth={1.5} /> Confirm: {confirmation.toolName}
           </div>
           <div
             style={{
-              fontSize: 11,
-              color: 'rgba(200, 200, 210, 0.8)',
-              fontFamily: 'monospace',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-secondary)',
+              fontFamily: 'var(--font-mono)',
               wordBreak: 'break-all',
             }}
           >
@@ -173,38 +171,44 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
           <div
             style={{
               display: 'flex',
-              gap: 8,
-              marginTop: 8,
+              gap: 'var(--space-2)',
+              marginTop: 'var(--space-2)',
               justifyContent: 'flex-end',
             }}
           >
             <button
               onClick={() => onConfirmResponse(confirmation.toolCallId, false)}
               style={{
-                background: 'rgba(217, 83, 79, 0.8)',
+                background: 'var(--danger)',
                 border: 'none',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-sm)',
                 color: '#fff',
-                padding: '4px 12px',
-                fontSize: 12,
+                padding: 'var(--space-1) var(--space-3)',
+                fontSize: 'var(--text-sm)',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-1)',
               }}
             >
-              Deny
+              <X size={12} strokeWidth={2} style={{ color: '#fff' }} /> Deny
             </button>
             <button
               onClick={() => onConfirmResponse(confirmation.toolCallId, true)}
               style={{
-                background: 'rgba(80, 180, 120, 0.8)',
+                background: 'var(--success)',
                 border: 'none',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-sm)',
                 color: '#fff',
-                padding: '4px 12px',
-                fontSize: 12,
+                padding: 'var(--space-1) var(--space-3)',
+                fontSize: 'var(--text-sm)',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-1)',
               }}
             >
-              Allow
+              <Check size={12} strokeWidth={2} style={{ color: '#fff' }} /> Allow
             </button>
           </div>
         </div>
@@ -214,13 +218,13 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       {isVisible && (
         <div
           style={{
-            width: 12,
-            height: 12,
-            background: 'rgba(26, 28, 31, 0.92)',
+            width: 'var(--space-3)',
+            height: 'var(--space-3)',
+            background: 'var(--glass-bg)',
             transform: 'rotate(45deg)',
-            marginTop: -6,
-            borderRight: '1px solid rgba(255, 255, 255, 0.08)',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            marginTop: -6, // specific layout offset, keep as-is
+            borderRight: `1px solid var(--glass-border)`,
+            borderBottom: `1px solid var(--glass-border)`,
           }}
         />
       )}

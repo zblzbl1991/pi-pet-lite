@@ -5,6 +5,9 @@ import {
   QUICK_INPUT_WIDTH,
   QUICK_INPUT_HEIGHT,
 } from '../shared/constants';
+import {
+  THEME_PAGE_BG,
+} from '../shared/theme-constants';
 
 /**
  * Create the pet BrowserWindow as a small, transparent, always-on-top window.
@@ -82,7 +85,7 @@ export function createSettingsWindow(
     minHeight: 420,
     resizable: true,
     title: 'Clawd Settings',
-    backgroundColor: '#1a1c1f',
+    backgroundColor: THEME_PAGE_BG,
     autoHideMenuBar: true,
     center: true,
     alwaysOnTop: false,
@@ -149,9 +152,9 @@ export function createChatWindow(
     minHeight: 400,
     resizable: true,
     frame: false,
+    transparent: true,
     skipTaskbar: true,
     title: '',
-    backgroundColor: '#1e1f22',
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
