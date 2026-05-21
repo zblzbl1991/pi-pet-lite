@@ -14,8 +14,11 @@ import {
   RotateCcw,
   X,
   AlertTriangle,
+  Wifi,
+  RefreshCw,
+  Link,
 } from 'lucide-react';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole } from '../../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole, AgentCardInfo } from '../../shared/types';
 import { TOOL_GROUPS, CUSTOM_PROFILE_DEFAULT_PROMPT, CUSTOM_PROFILE_DEFAULT_TOOLS } from '../../shared/constants';
 
 /** Provider option with display label and available models */
@@ -200,7 +203,7 @@ function SaveStatus({ message }: { message: string }) {
   return (
     <div style={{
       ...sharedStyles.statusMsg,
-      ...(message.includes('Failed') ? sharedStyles.errorMsg : sharedStyles.successMsg),
+      ...((message.includes('Failed') || message.includes('失败')) ? sharedStyles.errorMsg : sharedStyles.successMsg),
     }}>
       {message}
     </div>
@@ -623,12 +626,22 @@ function toolHasGroup(tool: string): boolean {
   return ALL_TOOLS.includes(tool);
 }
 
+const REMOTE_ROLE_COLOR = '#06b6d4'; // Cyan
+
 function ProfilesSection() {
   const [profiles, setProfiles] = useState<PetProfile[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+
+  // Remote agent creation state
+  const [showRemoteForm, setShowRemoteForm] = useState(false);
+  const [remoteUrl, setRemoteUrl] = useState('');
+  const [remoteApiKey, setRemoteApiKey] = useState('');
+  const [remoteFetchStatus, setRemoteFetchStatus] = useState<ConnectionStatus>('idle');
+  const [remoteFetchMessage, setRemoteFetchMessage] = useState('');
+  const [remoteCard, setRemoteCard] = useState<AgentCardInfo | null>(null);
 
   useEffect(() => {
     window.settingsAPI?.loadProfiles?.().then((p) => {
@@ -642,9 +655,9 @@ function ProfilesSection() {
     try {
       const result = await window.settingsAPI.saveProfiles(updated);
       setProfiles(updated);
-      setSaveMessage(result.success ? 'Profiles saved' : (result.error || 'Failed to save'));
+      setSaveMessage(result.success ? '配置已保存' : (result.error || '保存失败'));
     } catch (err: unknown) {
-      setSaveMessage(err instanceof Error ? err.message : 'Failed to save');
+      setSaveMessage(err instanceof Error ? err.message : '保存失败');
     }
     setTimeout(() => setSaveMessage(''), 3000);
   }, []);
@@ -655,9 +668,9 @@ function ProfilesSection() {
     if (result.success) {
       setProfiles([]);
       setEditingId(null);
-      setSaveMessage('Profiles reset to defaults');
+      setSaveMessage('已恢复默认配置');
     } else {
-      setSaveMessage(result.error || 'Failed to reset');
+      setSaveMessage(result.error || '恢复失败');
     }
     setTimeout(() => setSaveMessage(''), 3000);
   }, []);
@@ -676,9 +689,7 @@ function ProfilesSection() {
   const saveProfile = useCallback((id: string) => {
     const profile = profiles.find((p) => p.id === id);
     if (!profile) return;
-    // Build the config override entry
     const entry: PetProfile = { ...profile };
-    // Update or add to profiles list
     const existing = profiles.findIndex((p) => p.id === id);
     let updated: PetProfile[];
     if (existing >= 0) {
@@ -714,11 +725,98 @@ function ProfilesSection() {
     if (editingId === id) setEditingId(null);
   }, [profiles, saveAll, editingId]);
 
+  // Fetch AgentCard from remote URL
+  const handleFetchAgentCard = useCallback(async () => {
+    if (!remoteUrl.trim()) return;
+    setRemoteFetchStatus('testing');
+    setRemoteFetchMessage('正在连接远程 agent...');
+    setRemoteCard(null);
+    try {
+      const cardUrl = remoteUrl.trim().replace(/\/+$/, '') + '/.well-known/agent-card.json';
+      const resp = await fetch(cardUrl, { signal: AbortSignal.timeout(10000) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+      const card = await resp.json();
+      const info: AgentCardInfo = {
+        name: card.name ?? 'Unknown Agent',
+        description: card.description ?? undefined,
+        url: card.url ?? remoteUrl.trim(),
+        skills: card.skills?.map((s: { id: string; name: string; description?: string }) => ({
+          id: s.id, name: s.name, description: s.description,
+        })),
+        authentication: card.authentication ? { schemes: card.authentication.schemes ?? [] } : undefined,
+      };
+      setRemoteCard(info);
+      setRemoteFetchStatus('success');
+      setRemoteFetchMessage(`已连接：${info.name}`);
+    } catch (err) {
+      setRemoteFetchStatus('error');
+      setRemoteFetchMessage(err instanceof Error ? err.message : '连接失败');
+    }
+  }, [remoteUrl]);
+
+  // Save remote agent profile
+  const handleSaveRemote = useCallback(() => {
+    if (!remoteCard) return;
+    const id = `remote-${Date.now()}`;
+    const newProfile: PetProfile = {
+      id,
+      name: remoteCard.name,
+      role: 'remote' as PetRole,
+      systemPrompt: '',
+      toolNames: [],
+      enabled: true,
+      icon: 'clawd-idle.gif',
+      gifPrefix: 'clawd',
+      a2a: {
+        url: remoteUrl.trim().replace(/\/+$/, ''),
+        apiKey: remoteApiKey.trim() || undefined,
+        agentCard: remoteCard,
+      },
+    };
+    saveAll([...profiles, newProfile]);
+    setShowRemoteForm(false);
+    setRemoteUrl('');
+    setRemoteApiKey('');
+    setRemoteCard(null);
+    setRemoteFetchStatus('idle');
+    setRemoteFetchMessage('');
+  }, [remoteCard, remoteUrl, remoteApiKey, profiles, saveAll]);
+
+  // Refresh AgentCard for existing remote agent
+  const handleRefreshAgentCard = useCallback(async (id: string) => {
+    const profile = profiles.find((p) => p.id === id);
+    if (!profile?.a2a?.url) return;
+    try {
+      const cardUrl = profile.a2a.url.replace(/\/+$/, '') + '/.well-known/agent-card.json';
+      const resp = await fetch(cardUrl, { signal: AbortSignal.timeout(10000) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const card = await resp.json();
+      const info: AgentCardInfo = {
+        name: card.name ?? profile.name,
+        description: card.description ?? undefined,
+        url: card.url ?? profile.a2a.url,
+        skills: card.skills?.map((s: { id: string; name: string; description?: string }) => ({
+          id: s.id, name: s.name, description: s.description,
+        })),
+        authentication: card.authentication ? { schemes: card.authentication.schemes ?? [] } : undefined,
+      };
+      updateProfile(id, { a2a: { ...profile.a2a, agentCard: info } });
+      setSaveMessage(`AgentCard 已刷新：${info.name}`);
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (err) {
+      setSaveMessage(`刷新失败：${err instanceof Error ? err.message : '未知错误'}`);
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  }, [profiles, updateProfile]);
+
   if (!hasLoaded) {
     return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>Loading...</div>;
   }
 
-  const editing = profiles.find((p) => p.id === editingId);
+  const roleColors: Record<string, string> = {
+    chief: 'var(--role-chief)', coder: 'var(--role-coder)', scout: 'var(--role-scout)',
+    analyst: 'var(--role-analyst)', custom: 'var(--role-custom)', remote: REMOTE_ROLE_COLOR,
+  };
 
   return (
     <>
@@ -729,11 +827,9 @@ function ProfilesSection() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
         {profiles.map((p) => {
           const isBuiltIn = BUILT_IN_IDS.has(p.id);
+          const isRemote = p.role === 'remote';
           const isDisabled = p.enabled === false;
           const isEditing = editingId === p.id;
-          const roleColors: Record<string, string> = {
-            chief: 'var(--role-chief)', coder: 'var(--role-coder)', scout: 'var(--role-scout)', analyst: 'var(--role-analyst)', custom: 'var(--role-custom)',
-          };
           const color = roleColors[p.role] ?? 'var(--role-custom)';
 
           return (
@@ -750,106 +846,153 @@ function ProfilesSection() {
                 <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', flex: 1 }}>
                   {p.name}
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginLeft: 'var(--space-2)' }}>
-                    {p.role}{isBuiltIn ? ' (built-in)' : ''}
+                    {isRemote ? '远程' : p.role}{isBuiltIn ? ' (内置)' : ''}
                   </span>
                 </span>
+                {isRemote && (
+                  <button onClick={() => handleRefreshAgentCard(p.id)} title="刷新 AgentCard" style={{
+                    background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
+                    padding: 'var(--space-1) var(--space-2)', display: 'flex', alignItems: 'center',
+                  }}>
+                    <RefreshCw size={12} strokeWidth={1.5} />
+                  </button>
+                )}
                 {!isBuiltIn && p.role !== 'chief' && (
                   <button onClick={() => setConfirmDeleteId(p.id)} style={{
                     background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer',
                     fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)', opacity: 0.6,
                     display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
-                  }}><Trash2 size={12} strokeWidth={1.5} /> Delete</button>
+                  }}><Trash2 size={12} strokeWidth={1.5} /> 删除</button>
                 )}
                 {p.role !== 'chief' && (
                   <button onClick={() => toggleEnabled(p.id)} style={{
                     background: 'none', border: 'none', color: isDisabled ? 'var(--success)' : 'var(--danger)',
                     cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)',
                   }}>
-                    {isDisabled ? 'Enable' : 'Disable'}
+                    {isDisabled ? '启用' : '禁用'}
                   </button>
                 )}
                 <button onClick={() => setEditingId(isEditing ? null : p.id)} style={{
                   background: 'none', border: 'none', color: 'var(--role-coder)', cursor: 'pointer',
                   fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)',
                 }}>
-                  {isEditing ? 'Close' : 'Edit'}
+                  {isEditing ? '关闭' : '编辑'}
                 </button>
               </div>
 
+              {/* Remote agent card info */}
+              {isRemote && p.a2a?.agentCard && !isEditing && (
+                <div style={{ marginTop: 'var(--space-2)', paddingLeft: 'var(--space-6)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                    <Link size={10} strokeWidth={1.5} /> {p.a2a.url}
+                  </div>
+                  {p.a2a.agentCard.description && (
+                    <div style={{ marginTop: 'var(--space-1)' }}>{p.a2a.agentCard.description}</div>
+                  )}
+                </div>
+              )}
+
               {isEditing && (
                 <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                  {/* Name */}
-                  <div style={sharedStyles.field}>
-                    <label style={sharedStyles.label}>Name</label>
-                    <input type="text" value={p.name}
-                      onChange={(e) => updateProfile(p.id, { name: e.target.value })}
-                      style={sharedStyles.input} />
-                  </div>
-
-                  {/* System Prompt */}
-                  <div style={sharedStyles.field}>
-                    <label style={sharedStyles.label}>System Prompt</label>
-                    <textarea value={p.systemPrompt}
-                      onChange={(e) => updateProfile(p.id, { systemPrompt: e.target.value })}
-                      style={{ ...sharedStyles.input, minHeight: 120, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}
-                    />
-                  </div>
-
-                  {/* GIF Prefix */}
-                  <div style={sharedStyles.field}>
-                    <label style={sharedStyles.label}>GIF Prefix</label>
-                    <input type="text" value={p.gifPrefix ?? 'clawd'}
-                      onChange={(e) => updateProfile(p.id, { gifPrefix: e.target.value })}
-                      style={{ ...sharedStyles.input, width: 200 }} // specific layout width
-                    />
-                    <div style={sharedStyles.hint}>Determines which GIF set is used for animations.</div>
-                  </div>
-
-                  {/* Tool Groups */}
-                  <div style={sharedStyles.field}>
-                    <label style={sharedStyles.label}>Tools</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                      {Object.entries(TOOL_GROUPS).map(([groupKey, group]) => (
-                        <div key={groupKey}>
-                          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>
-                            {group.label}
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-                            {group.tools.map((tool) => {
-                              const checked = p.toolNames.includes(tool);
-                              return (
-                                <label key={tool} style={{
-                                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer',
-                                  padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)',
-                                  background: checked ? 'var(--success-bg)' : 'var(--border-subtle)',
-                                  border: `1px solid ${checked ? 'var(--success)' : 'var(--border-subtle)'}`,
-                                  fontSize: 'var(--text-sm)', color: checked ? 'var(--success)' : 'var(--text-tertiary)',
-                                }}>
-                                  <input type="checkbox" checked={checked}
-                                    onChange={() => {
-                                      const newTools = checked
-                                        ? p.toolNames.filter((t) => t !== tool)
-                                        : [...p.toolNames, tool];
-                                      updateProfile(p.id, { toolNames: newTools });
-                                    }}
-                                    style={{ width: 'var(--space-3)', height: 'var(--space-3)' }}
-                                  />
-                                  {tool}
-                                </label>
-                              );
-                            })}
-                          </div>
+                  {isRemote ? (
+                    <>
+                      {/* Remote agent edit form */}
+                      <div style={sharedStyles.field}>
+                        <label style={sharedStyles.label}>Agent URL</label>
+                        <input type="text" value={p.a2a?.url ?? ''}
+                          onChange={(e) => updateProfile(p.id, { a2a: { ...p.a2a!, url: e.target.value } })}
+                          style={sharedStyles.input} placeholder="https://agent.example.com" />
+                      </div>
+                      <div style={sharedStyles.field}>
+                        <label style={sharedStyles.label}>API Key（可选）</label>
+                        <input type="password" value={p.a2a?.apiKey ?? ''}
+                          onChange={(e) => updateProfile(p.id, { a2a: { ...p.a2a!, apiKey: e.target.value || undefined } })}
+                          style={sharedStyles.input} placeholder="Bearer token" />
+                      </div>
+                      <div style={sharedStyles.field}>
+                        <label style={sharedStyles.label}>名称</label>
+                        <input type="text" value={p.name}
+                          onChange={(e) => updateProfile(p.id, { name: e.target.value })}
+                          style={sharedStyles.input} />
+                      </div>
+                      <div style={sharedStyles.field}>
+                        <label style={sharedStyles.label}>超时时间（秒）</label>
+                        <input type="number" min={10} max={600} value={Math.round((p.a2a?.timeoutMs ?? 180000) / 1000)}
+                          onChange={(e) => updateProfile(p.id, { a2a: { ...p.a2a!, timeoutMs: Math.max(10, parseInt(e.target.value, 10) || 180) * 1000 } })}
+                          style={{ ...sharedStyles.input, width: 120 }} />
+                        <div style={sharedStyles.hint}>等待远程 agent 响应的最长时间（默认 180 秒）。</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Local agent edit form */}
+                      <div style={sharedStyles.field}>
+                        <label style={sharedStyles.label}>名称</label>
+                        <input type="text" value={p.name}
+                          onChange={(e) => updateProfile(p.id, { name: e.target.value })}
+                          style={sharedStyles.input} />
+                      </div>
+                      <div style={sharedStyles.field}>
+                        <label style={sharedStyles.label}>系统提示词</label>
+                        <textarea value={p.systemPrompt}
+                          onChange={(e) => updateProfile(p.id, { systemPrompt: e.target.value })}
+                          style={{ ...sharedStyles.input, minHeight: 120, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)' }}
+                        />
+                      </div>
+                      <div style={sharedStyles.field}>
+                        <label style={sharedStyles.label}>GIF 前缀</label>
+                        <input type="text" value={p.gifPrefix ?? 'clawd'}
+                          onChange={(e) => updateProfile(p.id, { gifPrefix: e.target.value })}
+                          style={{ ...sharedStyles.input, width: 200 }}
+                        />
+                        <div style={sharedStyles.hint}>决定宠物使用哪套 GIF 动画。</div>
+                      </div>
+                      <div style={sharedStyles.field}>
+                        <label style={sharedStyles.label}>工具</label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                          {Object.entries(TOOL_GROUPS).map(([groupKey, group]) => (
+                            <div key={groupKey}>
+                              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)' }}>
+                                {group.label}
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                                {group.tools.map((tool) => {
+                                  const checked = p.toolNames.includes(tool);
+                                  return (
+                                    <label key={tool} style={{
+                                      display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer',
+                                      padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)',
+                                      background: checked ? 'var(--success-bg)' : 'var(--border-subtle)',
+                                      border: `1px solid ${checked ? 'var(--success)' : 'var(--border-subtle)'}`,
+                                      fontSize: 'var(--text-sm)', color: checked ? 'var(--success)' : 'var(--text-tertiary)',
+                                    }}>
+                                      <input type="checkbox" checked={checked}
+                                        onChange={() => {
+                                          const newTools = checked
+                                            ? p.toolNames.filter((t) => t !== tool)
+                                            : [...p.toolNames, tool];
+                                          updateProfile(p.id, { toolNames: newTools });
+                                        }}
+                                        style={{ width: 'var(--space-3)', height: 'var(--space-3)' }}
+                                      />
+                                      {tool}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
+                    </>
+                  )}
 
                   <div style={sharedStyles.btnRow}>
                     <button onClick={() => saveProfile(p.id)} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                      <Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Save
+                      <Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 保存
                     </button>
                     <button onClick={() => setEditingId(null)} style={{ ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                      <X size={14} strokeWidth={1.5} /> Cancel
+                      <X size={14} strokeWidth={1.5} /> 取消
                     </button>
                   </div>
                 </div>
@@ -858,15 +1001,90 @@ function ProfilesSection() {
           );
         })}
 
-        {/* Create new profile button */}
-        <button onClick={createProfile} style={{
-          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-nav)', border: `1.5px dashed var(--border)`,
-          background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer',
-          fontSize: 'var(--text-xs)', fontWeight: 'var(--font-medium)', textAlign: 'center',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
-        }}>
-          <Plus size={14} strokeWidth={1.5} /> Add Custom Profile
-        </button>
+        {/* Add Remote Agent form */}
+        {showRemoteForm && (
+          <div style={{
+            padding: 'var(--space-4)', borderRadius: 'var(--radius-nav)',
+            border: `1.5px solid ${REMOTE_ROLE_COLOR}40`, background: `${REMOTE_ROLE_COLOR}08`,
+          }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
+              添加远程 Agent
+            </div>
+            <div style={sharedStyles.field}>
+              <label style={sharedStyles.label}>Agent URL</label>
+              <input type="text" value={remoteUrl}
+                onChange={(e) => { setRemoteUrl(e.target.value); setRemoteCard(null); setRemoteFetchStatus('idle'); }}
+                style={sharedStyles.input} placeholder="https://agent.example.com" />
+              <div style={sharedStyles.hint}>输入 A2A 兼容 agent 的基础 URL。</div>
+            </div>
+            <div style={sharedStyles.field}>
+              <label style={sharedStyles.label}>API Key（可选）</label>
+              <input type="password" value={remoteApiKey}
+                onChange={(e) => setRemoteApiKey(e.target.value)}
+                style={sharedStyles.input} placeholder="如需认证请填写 Bearer token" />
+            </div>
+            <div style={{ ...sharedStyles.btnRow, marginTop: 'var(--space-3)' }}>
+              <button onClick={handleFetchAgentCard} disabled={!remoteUrl.trim() || remoteFetchStatus === 'testing'}
+                style={{
+                  ...sharedStyles.btn, background: REMOTE_ROLE_COLOR, color: '#fff',
+                  opacity: remoteUrl.trim() && remoteFetchStatus !== 'testing' ? 1 : 0.5,
+                  cursor: remoteUrl.trim() && remoteFetchStatus !== 'testing' ? 'pointer' : 'not-allowed',
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                }}>
+                <Wifi size={14} strokeWidth={1.5} style={{ color: '#fff' }} />
+                {remoteFetchStatus === 'testing' ? '连接中...' : '连接'}
+              </button>
+              <button onClick={() => { setShowRemoteForm(false); setRemoteUrl(''); setRemoteApiKey(''); setRemoteCard(null); setRemoteFetchStatus('idle'); }}
+                style={{ ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                <X size={14} strokeWidth={1.5} /> 取消
+              </button>
+            </div>
+
+            <StatusBlock status={remoteFetchStatus} message={remoteFetchMessage} />
+
+            {remoteCard && (
+              <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', border: `1px solid var(--border-subtle)` }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>{remoteCard.name}</div>
+                {remoteCard.description && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-1)' }}>{remoteCard.description}</div>}
+                {remoteCard.skills && remoteCard.skills.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginTop: 'var(--space-2)' }}>
+                    {remoteCard.skills.map((s) => (
+                      <span key={s.id} style={{ fontSize: 'var(--text-xs)', padding: '2px 6px', borderRadius: 'var(--radius-sm)', background: `${REMOTE_ROLE_COLOR}15`, color: REMOTE_ROLE_COLOR }}>
+                        {s.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <button onClick={handleSaveRemote} style={{
+                  ...sharedStyles.btn, ...sharedStyles.btnSave, marginTop: 'var(--space-3)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                }}>
+                  <Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 加入团队
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <button onClick={createProfile} style={{
+            flex: 1, padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-nav)', border: `1.5px dashed var(--border)`,
+            background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer',
+            fontSize: 'var(--text-xs)', fontWeight: 'var(--font-medium)', textAlign: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+          }}>
+            <Plus size={14} strokeWidth={1.5} /> 自定义配置
+          </button>
+          <button onClick={() => { setShowRemoteForm(true); setRemoteCard(null); setRemoteFetchStatus('idle'); }} style={{
+            flex: 1, padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-nav)', border: `1.5px dashed ${REMOTE_ROLE_COLOR}50`,
+            background: 'transparent', color: REMOTE_ROLE_COLOR, cursor: 'pointer',
+            fontSize: 'var(--text-xs)', fontWeight: 'var(--font-medium)', textAlign: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)',
+          }}>
+            <Wifi size={14} strokeWidth={1.5} /> 远程 Agent
+          </button>
+        </div>
       </div>
 
       <div style={sharedStyles.btnRow}>
@@ -874,7 +1092,7 @@ function ProfilesSection() {
           ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
         }}>
-          <RotateCcw size={14} strokeWidth={1.5} /> Reset to Defaults
+          <RotateCcw size={14} strokeWidth={1.5} /> 恢复默认
         </button>
       </div>
 
@@ -884,7 +1102,7 @@ function ProfilesSection() {
       {confirmDeleteId && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', // kept as overlay scrim
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000,
         }}>
           <div style={{
@@ -892,23 +1110,23 @@ function ProfilesSection() {
             border: `1px solid var(--border)`,
           }}>
             <div style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
-              Delete Profile?
+              删除配置？
             </div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: 'var(--space-5)' }}>
-              This will permanently remove this custom profile. This action cannot be undone.
+              此操作将永久删除该配置，无法撤销。
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
               <button onClick={() => setConfirmDeleteId(null)} style={{
                 ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
               }}>
-                <X size={14} strokeWidth={1.5} /> Cancel
+                <X size={14} strokeWidth={1.5} /> 取消
               </button>
               <button onClick={() => deleteProfile(confirmDeleteId)} style={{
                 ...sharedStyles.btn, background: 'var(--danger)', color: '#fff', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
               }}>
-                <Trash2 size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Delete
+                <Trash2 size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 删除
               </button>
             </div>
           </div>

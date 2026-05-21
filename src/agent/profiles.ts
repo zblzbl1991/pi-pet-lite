@@ -165,6 +165,7 @@ function mergeProfile(base: PetProfile, override: Partial<PetProfile>): PetProfi
   if (override.trustOverrides !== undefined) merged.trustOverrides = override.trustOverrides;
   if (override.llm !== undefined) merged.llm = override.llm;
   if (override.skills !== undefined) merged.skills = override.skills;
+  if (override.a2a !== undefined) merged.a2a = override.a2a;
   return merged;
 }
 

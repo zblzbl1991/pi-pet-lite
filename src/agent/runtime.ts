@@ -180,7 +180,14 @@ export async function createAgentRuntime(
     const specialists = getEnabledSpecialistProfiles();
     if (specialists.length > 0) {
       const specialistList = specialists
-        .map((s) => `- **${s.name}** (id: "${s.id}", role: "${s.role}"): tools [${s.toolNames.join(', ')}]`)
+        .map((s) => {
+          const isRemote = s.role === 'remote';
+          const remoteTag = isRemote ? ' (远程)' : '';
+          const desc = isRemote && s.a2a?.agentCard?.description
+            ? s.a2a.agentCard.description
+            : `tools [${s.toolNames.join(', ')}]`;
+          return `- **${s.name}**${remoteTag} (id: "${s.id}", role: "${s.role}"): ${desc}`;
+        })
         .join('\n');
       systemPrompt += `\n\n**Currently available specialists:**\n${specialistList}`;
     }

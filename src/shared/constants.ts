@@ -226,6 +226,9 @@ export const PET_MANAGER_MAX_QUEUE_DEPTH = 5;
 /** Delegation timeout in milliseconds (5 minutes) */
 export const DELEGATION_TIMEOUT_MS = 5 * 60 * 1000;
 
+/** Default timeout for remote agent calls (3 minutes) */
+export const REMOTE_DEFAULT_TIMEOUT_MS = 3 * 60 * 1000;
+
 /** IPC channels for pet management (main <-> renderer) */
 export const IPC_PET_STATUS = 'pet:status';
 export const IPC_PET_DELEGATE = 'pet:delegate';

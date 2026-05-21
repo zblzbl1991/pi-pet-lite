@@ -98,6 +98,7 @@ export const PetRole = {
   SCOUT: 'scout',
   ANALYST: 'analyst',
   CUSTOM: 'custom',
+  REMOTE: 'remote',
 } as const;
 
 export type PetRole = (typeof PetRole)[keyof typeof PetRole];
@@ -111,6 +112,27 @@ export const PetStatus = {
 } as const;
 
 export type PetStatus = (typeof PetStatus)[keyof typeof PetStatus];
+
+/** A2A remote agent connection configuration */
+export interface A2AConfig {
+  /** Remote agent base URL (e.g. "https://agent.example.com") */
+  url: string;
+  /** Bearer token / API key for authentication (plaintext, stored in config) */
+  apiKey?: string;
+  /** Cached AgentCard from /.well-known/agent-card.json */
+  agentCard?: AgentCardInfo;
+  /** Timeout for remote calls in ms. Default: REMOTE_DEFAULT_TIMEOUT_MS */
+  timeoutMs?: number;
+}
+
+/** Subset of AgentCard data cached locally for display and routing */
+export interface AgentCardInfo {
+  name: string;
+  description?: string;
+  url: string;
+  skills?: { id: string; name: string; description?: string }[];
+  authentication?: { schemes: string[] };
+}
 
 /** Profile-driven agent configuration.
  *  Each pet gets a differentiated identity, tool set, and behavior
@@ -138,6 +160,8 @@ export interface PetProfile {
   gifPrefix?: string;
   /** Whether this profile is active. Disabled profiles are excluded from runtime. */
   enabled?: boolean;
+  /** A2A remote agent connection. When present, this profile uses RemoteAgentRuntime. */
+  a2a?: A2AConfig;
 }
 
 /** Thinking level for agent reasoning */

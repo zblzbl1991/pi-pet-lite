@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/05-20-a2a-remote-agent-integration/prd.md", "reason": "Complete PRD with all design decisions (D1-D9), type extensions, RemoteAgentRuntime design, UI requirements, acceptance criteria"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling patterns for network failures, timeouts, and A2A protocol errors in agent utility process"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality standards for new RemoteAgentRuntime and profile modifications"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for Settings UI remote agent forms (Add/Edit/Delete/Refresh)"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management patterns for remote agent status and AgentCard data in Settings UI"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety guidelines for PetProfile a2a field extension and A2A type definitions"}

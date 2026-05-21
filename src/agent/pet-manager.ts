@@ -17,6 +17,7 @@
  */
 
 import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
+import { createRemoteAgentRuntime } from './remote-runtime';
 import { TaskQueue, TaskResult } from './task-queue';
 import { getProfileById, getDefaultProfile, getProfileIds } from './profiles';
 import {
@@ -307,13 +308,11 @@ export class PetManager {
       );
     }
 
-    // Create the agent runtime
+    // Create the agent runtime (local or remote)
     try {
-      const agent = await createAgentRuntime(
-        this.onEvent,
-        this.getConfirmation,
-        profile
-      );
+      const agent = profile.a2a
+        ? await createRemoteAgentRuntime(this.onEvent, this.getConfirmation, profile)
+        : await createAgentRuntime(this.onEvent, this.getConfirmation, profile);
 
       const managed: ManagedPet = {
         profile,

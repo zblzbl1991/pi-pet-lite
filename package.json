@@ -16,6 +16,7 @@
     "postinstall": "node scripts/generate-icon.js"
   },
   "dependencies": {
+    "@a2a-js/sdk": "^0.3.13",
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",

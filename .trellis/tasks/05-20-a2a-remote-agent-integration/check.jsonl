@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/05-20-a2a-remote-agent-integration/prd.md", "reason": "Acceptance criteria checklist: all 15 items must pass including AgentCard fetch, Chief delegation, PetWindow display, timeout, abort, error handling"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error handling for network failures, DNS errors, timeout, invalid AgentCard format"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality checks: no hardcoded values, proper type safety, consistent patterns"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Settings UI component quality: form validation, loading states, error display for remote agent forms"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety: PetProfile a2a field properly typed, discriminated union for remote vs local agent handling"}
