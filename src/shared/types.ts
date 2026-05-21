@@ -214,7 +214,8 @@ export type RendererToAgentMessage =
   | { type: 'abort' }
   | { type: 'pet-delegate'; petId: string; prompt: string }
   | { type: 'pet-abort'; petId: string }
-  | { type: 'pet-status-request' };
+  | { type: 'pet-status-request' }
+  | { type: 'profiles-updated' };
 
 /** Messages sent from agent to renderer via MessagePort */
 export type AgentToRendererMessage =

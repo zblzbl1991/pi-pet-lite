@@ -92,7 +92,8 @@ const CHIEF_PROFILE: PetProfile = {
     'read_blackboard',
     'write_blackboard',
   ],
-  icon: 'clawd-idle.gif',
+  gifPrefix: 'apupepe',
+  icon: 'apupepe-idle.gif',
 };
 
 /** Coder profile: code writing and file manipulation */
@@ -217,6 +218,16 @@ export function getProfileById(id: string): PetProfile | undefined {
  */
 export function getProfileIds(): string[] {
   return Object.keys(buildProfileMap());
+}
+
+/**
+ * Get a resolved profile by its role (e.g. "coder", "remote").
+ * Returns the first enabled profile matching the role.
+ * Used by delegation to resolve role names like "remote" to actual profiles.
+ */
+export function getProfileByRole(role: string): PetProfile | undefined {
+  const map = buildProfileMap();
+  return Object.values(map).find((p) => p.role === role && p.enabled !== false);
 }
 
 /**

@@ -291,6 +291,11 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
       break;
     }
 
+    case 'profiles-updated': {
+      handleProfilesUpdated();
+      break;
+    }
+
     default: {
       const _exhaustive: never = msg;
       console.warn('Unknown message type from renderer:', (msg as Record<string, unknown>).type);
@@ -308,6 +313,13 @@ async function handleUserInput(text: string): Promise<void> {
     // Multi-pet mode: delegate to Chief
     try {
       const chiefProfile = getDefaultProfile();
+
+      // If Chief was marked for deferred rebuild, dispose now before delegating
+      if (chiefNeedsRebuild) {
+        petManager.dispose(chiefProfile.id);
+        chiefNeedsRebuild = false;
+      }
+
       await petManager.delegate(chiefProfile.id, text);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -360,6 +372,7 @@ function handleAbort(): void {
  * Handle pet-delegate message: delegate a task to a specific pet.
  */
 async function handlePetDelegate(petId: string, prompt: string): Promise<void> {
+  console.log(`[agent-proc] handlePetDelegate(${petId}, "${prompt.slice(0, 60)}...")`);
   if (!petManager) {
     sendToRenderer({ type: 'error', message: 'PetManager not initialized' });
     return;
@@ -408,6 +421,36 @@ function handlePetStatusRequest(): void {
 
   const reports = petManager.getAllStatuses();
   sendToRenderer({ type: 'pet-statuses', statuses: reports });
+}
+
+/** Flag: Chief needs rebuild on next idle cycle */
+let chiefNeedsRebuild = false;
+
+/**
+ * Handle profiles-updated: dispose Chief agent so it rebuilds with fresh specialist list.
+ * If Chief is busy, defer until it becomes idle.
+ */
+function handleProfilesUpdated(): void {
+  if (!petManager) return;
+
+  const chiefProfile = getDefaultProfile();
+  const chiefId = chiefProfile.id;
+  const managed = petManager.getAllStatuses().find((s) => s.petId === chiefId);
+
+  if (!managed || managed.status === 'offline') {
+    // Chief not alive — nothing to dispose, next ensure() will create fresh
+    return;
+  }
+
+  if (managed.queueLength > 0) {
+    // Chief is busy — mark for deferred rebuild
+    chiefNeedsRebuild = true;
+    return;
+  }
+
+  // Chief is idle — dispose now, next user message triggers ensure() with fresh config
+  petManager.dispose(chiefId);
+  chiefNeedsRebuild = false;
 }
 
 /**

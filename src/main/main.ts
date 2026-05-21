@@ -779,6 +779,8 @@ function bootstrap(): void {
       (_event: Electron.IpcMainInvokeEvent, profiles: PetProfile[]) => {
         try {
           updateProfilesConfig(profiles);
+          // Notify agent process to rebuild Chief with updated specialist list
+          mainPort.postMessage({ type: 'profiles-updated' });
           return { success: true };
         } catch (err: unknown) {
           const errorMessage = err instanceof Error ? err.message : String(err);

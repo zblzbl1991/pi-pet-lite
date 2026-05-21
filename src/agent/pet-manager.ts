@@ -19,7 +19,7 @@
 import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
 import { createRemoteAgentRuntime } from './remote-runtime';
 import { TaskQueue, TaskResult } from './task-queue';
-import { getProfileById, getDefaultProfile, getProfileIds } from './profiles';
+import { getProfileById, getProfileByRole, getDefaultProfile, getProfileIds } from './profiles';
 import {
   PET_MANAGER_MAX_CONCURRENT,
   PET_MANAGER_IDLE_TIMEOUT_MINUTES,
@@ -145,9 +145,11 @@ export class PetManager {
    * @param prompt - The task prompt text
    * @returns Promise resolving to the task result
    */
-  async delegate(petId: string, prompt: string): Promise<TaskResult> {
-    const profile = getProfileById(petId) ?? getDefaultProfile();
+  async delegate(petIdOrRole: string, prompt: string): Promise<TaskResult> {
+    // Resolve by id first, then by role (for cases like "remote" where id is "remote-1234")
+    const profile = getProfileById(petIdOrRole) ?? getProfileByRole(petIdOrRole) ?? getDefaultProfile();
     const actualPetId = profile.id;
+    console.log(`[pet-mgr] delegate(${petIdOrRole}) resolved to petId=${actualPetId}, role=${profile.role}`);
 
     // Ensure the agent exists
     await this.ensureAgent(actualPetId, profile);
@@ -289,6 +291,8 @@ export class PetManager {
    * If max concurrent is reached, evicts the least recently used idle agent.
    */
   private async ensureAgent(petId: string, profile: PetProfile): Promise<void> {
+    console.log(`[pet-mgr] ensureAgent(${petId}, role=${profile.role}, a2a=${!!profile.a2a})`);
+
     // Already active
     if (this.agents.has(petId)) {
       this.resetIdleTimer(petId);
@@ -310,9 +314,11 @@ export class PetManager {
 
     // Create the agent runtime (local or remote)
     try {
+      console.log(`[pet-mgr] Creating ${profile.a2a ? 'REMOTE' : 'LOCAL'} runtime for ${petId}...`);
       const agent = profile.a2a
         ? await createRemoteAgentRuntime(this.onEvent, this.getConfirmation, profile)
         : await createAgentRuntime(this.onEvent, this.getConfirmation, profile);
+      console.log(`[pet-mgr] Runtime created for ${petId}`);
 
       const managed: ManagedPet = {
         profile,

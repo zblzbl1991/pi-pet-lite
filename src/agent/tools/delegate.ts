@@ -200,6 +200,7 @@ function buildDelegateTaskTool(): PiAgentTool {
         task_description: string;
         context_refs?: string[];
       };
+      console.log(`[delegate] Delegating to "${target_role}": ${task_description.slice(0, 80)}...`);
 
       // Validate role
       const roleError = validateRole(target_role);

@@ -3,7 +3,7 @@
  *
  * Implements the same AgentRuntime interface as local agents,
  * but delegates execution to a remote A2A-compatible agent server.
- * Uses @a2a-js/sdk for JSON-RPC communication.
+ * Uses @a2a-js/sdk for card discovery and JSON-RPC communication.
  */
 
 import type { PetProfile, AgentCardInfo } from '../shared/types';
@@ -46,8 +46,9 @@ async function loadClientModule() {
  */
 export async function fetchAgentCard(url: string): Promise<AgentCardInfo> {
   const { ClientFactory } = await loadClientModule();
+  const baseUrl = url.replace(/\/+$/, '') + '/';
   const factory = new (ClientFactory as new () => A2AClientFactory)();
-  const client = await factory.createFromUrl(url);
+  const client = await factory.createFromUrl(baseUrl);
   const card = await client.getAgentCard();
 
   return {
@@ -76,11 +77,17 @@ export async function createRemoteAgentRuntime(
   }
 
   const timeoutMs = a2aConfig.timeoutMs ?? REMOTE_DEFAULT_TIMEOUT_MS;
+  console.log(`[a2a] Creating remote runtime for "${profile.name}" (id=${profile.id})`);
+
   const { ClientFactory } = await loadClientModule();
 
-  // Create A2A client
+  // Ensure trailing slash so SDK's new URL() resolves .well-known path correctly
+  const baseUrl = a2aConfig.url.replace(/\/+$/, '') + '/';
+  console.log(`[a2a] Base URL: ${baseUrl}`);
+
   const factory = new (ClientFactory as new () => A2AClientFactory)();
-  const client: A2AClient = await factory.createFromUrl(a2aConfig.url);
+  const client: A2AClient = await factory.createFromUrl(baseUrl);
+  console.log(`[a2a] Client created`);
 
   let currentAbortController: AbortController | null = null;
 
@@ -90,9 +97,9 @@ export async function createRemoteAgentRuntime(
       const abortSignal = currentAbortController.signal;
 
       onEvent({ type: 'state-change', state: 'thinking' as const });
+      console.log(`[a2a] sendMessage to "${profile.name}": ${text.slice(0, 80)}...`);
 
       try {
-        // Race the A2A call against timeout and abort
         const result = await Promise.race([
           client.sendMessage({
             message: {
@@ -114,6 +121,7 @@ export async function createRemoteAgentRuntime(
           }),
         ]);
 
+        console.log(`[a2a] Response received from "${profile.name}"`);
         return extractTextFromResponse(result as A2AResponse);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -141,7 +149,6 @@ export async function createRemoteAgentRuntime(
 
 /**
  * Extract text content from an A2A response (Message or Task).
- * Only extracts kind='text' parts, ignoring files and other data.
  */
 function extractTextFromResponse(result: A2AResponse): string {
   if (result.kind === 'message') {
