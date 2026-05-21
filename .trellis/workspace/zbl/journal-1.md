@@ -248,3 +248,37 @@ Migrated renderer from hardcoded inline styles to CSS variable tokens: created t
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: A2A remote agent integration + hot-reload specialist list
+
+**Date**: 2026-05-21
+**Task**: A2A remote agent integration + hot-reload specialist list
+**Branch**: `master`
+
+### Summary
+
+Integrate A2A remote agent support with pet team management; add hot-reload Chief specialist list on profiles change; fix A2A URL trailing slash and role resolution
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3b2ba4f` | (see git log) |
+| `170f2c7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
