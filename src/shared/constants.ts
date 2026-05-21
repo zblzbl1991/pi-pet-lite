@@ -143,35 +143,35 @@ export const CONFIG_FILENAME = 'clawd-config.json';
 /** Tool groups with friendly names for Settings UI */
 export const TOOL_GROUPS: Record<string, { label: string; tools: string[] }> = {
   'File Operations': {
-    label: 'File Operations',
+    label: '文件操作',
     tools: ['read', 'write', 'edit', 'create_directory', 'delete_file'],
   },
   'Search': {
-    label: 'Search',
+    label: '搜索',
     tools: ['grep', 'find', 'ls'],
   },
   'Shell': {
-    label: 'Shell',
+    label: 'Shell 命令',
     tools: ['bash'],
   },
   'Browser Automation': {
-    label: 'Browser Automation',
+    label: '浏览器自动化',
     tools: ['browser_action'],
   },
   'Scheduling': {
-    label: 'Scheduling',
+    label: '定时任务',
     tools: ['create_schedule', 'list_schedules', 'delete_schedule'],
   },
   'Delegation': {
-    label: 'Delegation & Blackboard',
+    label: '委派与黑板',
     tools: ['delegate_task', 'read_blackboard', 'write_blackboard'],
   },
 };
 
 /** Default system prompt for newly created custom profiles */
-export const CUSTOM_PROFILE_DEFAULT_PROMPT = `You are {name}, a custom desktop AI assistant in the form of a cat character.
-Your capabilities are defined by the tools available to you.
-Follow user instructions carefully and report results clearly.`;
+export const CUSTOM_PROFILE_DEFAULT_PROMPT = `你是 {name}，一只以猫咪形象出现的自定义桌面 AI 助手。
+你的能力由可用工具定义。
+请仔细遵循用户指令并清晰地汇报结果。`;
 
 /** Default tool set for newly created custom profiles */
 export const CUSTOM_PROFILE_DEFAULT_TOOLS = ['read', 'grep', 'find', 'ls'];

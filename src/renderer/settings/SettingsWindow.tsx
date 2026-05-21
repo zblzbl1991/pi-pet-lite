@@ -265,9 +265,9 @@ function LLMSection() {
       const result = await window.settingsAPI.saveConfig({
         provider, model: effectiveModel || 'gpt-4o', apiKey, thinkingLevel,
       });
-      setSaveMessage(result.success ? 'Settings saved successfully' : (result.error || 'Failed to save'));
+      setSaveMessage(result.success ? '设置已保存' : (result.error || '保存失败'));
     } catch (err: unknown) {
-      setSaveMessage(err instanceof Error ? err.message : 'Failed to save');
+      setSaveMessage(err instanceof Error ? err.message : '保存失败');
     }
     setTimeout(() => setSaveMessage(''), 3000);
   }, [provider, effectiveModel, apiKey, thinkingLevel]);
@@ -275,32 +275,32 @@ function LLMSection() {
   const handleTest = useCallback(async () => {
     if (!window.settingsAPI || !apiKey.trim()) return;
     setConnectionStatus('testing');
-    setConnectionMessage('Testing connection...');
+    setConnectionMessage('正在测试连接...');
     setSaveMessage('');
     try {
       const result = await window.settingsAPI.testConnection({
         provider, model: effectiveModel || 'gpt-4o', apiKey,
       });
       setConnectionStatus(result.success ? 'success' : 'error');
-      setConnectionMessage(result.success ? 'Connection successful!' : (result.error || 'Connection failed'));
+      setConnectionMessage(result.success ? '连接成功！' : (result.error || '连接失败'));
     } catch (err: unknown) {
       setConnectionStatus('error');
-      setConnectionMessage(err instanceof Error ? err.message : 'Connection test failed');
+      setConnectionMessage(err instanceof Error ? err.message : '连接测试失败');
     }
   }, [provider, effectiveModel, apiKey]);
 
   if (!hasLoaded) {
-    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>Loading...</div>;
+    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>加载中...</div>;
   }
 
   return (
     <>
       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
-        LLM Configuration
+        LLM 配置
       </div>
 
       <div style={sharedStyles.field}>
-        <label style={sharedStyles.label}>Provider</label>
+        <label style={sharedStyles.label}>服务商</label>
         <select value={provider} onChange={(e) => {
           const np = e.target.value;
           setProvider(np);
@@ -314,36 +314,36 @@ function LLMSection() {
       </div>
 
       <div style={sharedStyles.field}>
-        <label style={sharedStyles.label}>Model</label>
+        <label style={sharedStyles.label}>模型</label>
         {currentProvider && currentProvider.models.length > 0 ? (
           <>
             <select value={model} onChange={(e) => { setModel(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }} style={sharedStyles.select}>
               {currentProvider.models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              <option value={CUSTOM_MODEL_VALUE}>Custom...</option>
+              <option value={CUSTOM_MODEL_VALUE}>自定义...</option>
             </select>
             {isCustomModel && (
               <>
                 <input type="text" value={customModelValue} onChange={(e) => { setCustomModelValue(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }}
-                  placeholder="Enter custom model name" style={{ ...sharedStyles.input, marginTop: 'var(--space-2)' }} />
-                <div style={sharedStyles.hint}>Enter any model name supported by {currentProvider.label}</div>
+                  placeholder="输入自定义模型名称" style={{ ...sharedStyles.input, marginTop: 'var(--space-2)' }} />
+                <div style={sharedStyles.hint}>输入 {currentProvider.label} 支持的任意模型名称</div>
               </>
             )}
           </>
         ) : (
           <>
             <input type="text" value={model} onChange={(e) => { setModel(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }}
-              placeholder="Enter model ID (e.g., openai/gpt-4o)" style={sharedStyles.input} />
-            <div style={sharedStyles.hint}>Enter the OpenRouter model ID in provider/model format</div>
+              placeholder="输入模型 ID（如 openai/gpt-4o）" style={sharedStyles.input} />
+            <div style={sharedStyles.hint}>以 provider/model 格式输入 OpenRouter 模型 ID</div>
           </>
         )}
       </div>
 
       <div style={sharedStyles.field}>
-        <label style={sharedStyles.label}>API Key</label>
+        <label style={sharedStyles.label}>API 密钥</label>
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <input type={showApiKey ? 'text' : 'password'} value={apiKey}
             onChange={(e) => { setApiKey(e.target.value); setConnectionStatus('idle'); setSaveMessage(''); }}
-            placeholder="Enter your API key" style={{ ...sharedStyles.input, paddingRight: 60 }} />
+            placeholder="输入你的 API 密钥" style={{ ...sharedStyles.input, paddingRight: 60 }} />
           <button onClick={() => setShowApiKey((p) => !p)}
             style={{ position: 'absolute', right: 'var(--space-2)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 'var(--space-1) var(--space-2)', display: 'flex', alignItems: 'center' }}>
             {showApiKey ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
@@ -352,21 +352,21 @@ function LLMSection() {
       </div>
 
       <div style={sharedStyles.field}>
-        <label style={sharedStyles.label}>Thinking Level</label>
+        <label style={sharedStyles.label}>思考深度</label>
         <select value={thinkingLevel} onChange={(e) => { setThinkingLevel(e.target.value as ThinkingLevel); setSaveMessage(''); }} style={sharedStyles.select}>
-          <option value="off">Off</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+          <option value="off">关闭</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option>
         </select>
-        <div style={sharedStyles.hint}>Controls how much the agent &quot;thinks&quot; before responding. Higher = better reasoning but slower.</div>
+        <div style={sharedStyles.hint}>控制 agent 在回复前的思考程度。越高推理能力越强但速度越慢。</div>
       </div>
 
       <div style={sharedStyles.btnRow}>
         <button onClick={handleSave} disabled={!isFormValid}
           style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, opacity: isFormValid ? 1 : 0.4, cursor: isFormValid ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-          <Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Save
+          <Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 保存
         </button>
         <button onClick={handleTest} disabled={!isFormValid || connectionStatus === 'testing'}
           style={{ ...sharedStyles.btn, ...sharedStyles.btnTest, opacity: isFormValid && connectionStatus !== 'testing' ? 1 : 0.5, cursor: isFormValid && connectionStatus !== 'testing' ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-          <Plug size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> {connectionStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+          <Plug size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> {connectionStatus === 'testing' ? '测试中...' : '测试连接'}
         </button>
       </div>
 
@@ -390,44 +390,44 @@ function BrowserSection() {
     if (!window.settingsAPI) return;
     try {
       const result = await window.settingsAPI.saveBrowserConfig(browserConfig);
-      setSaveMessage(result.success ? 'Browser settings saved' : (result.error || 'Failed to save'));
+      setSaveMessage(result.success ? '浏览器设置已保存' : (result.error || '保存失败'));
     } catch (err: unknown) {
-      setSaveMessage(err instanceof Error ? err.message : 'Failed to save');
+      setSaveMessage(err instanceof Error ? err.message : '保存失败');
     }
     setTimeout(() => setSaveMessage(''), 3000);
   }, [browserConfig]);
 
   const handleTest = useCallback(async () => {
     if (!window.settingsAPI) return;
-    setConnStatus('testing'); setConnMessage('Testing connection...'); setSaveMessage('');
+    setConnStatus('testing'); setConnMessage('正在测试连接...'); setSaveMessage('');
     try {
       const result = await window.settingsAPI.testBrowserConnection(browserConfig);
       setConnStatus(result.success ? 'success' : 'error');
       setConnMessage(result.success
-        ? (result.browserInfo ? `Connected: ${result.browserInfo}` : 'Connection successful!')
-        : (result.error || 'Connection failed'));
+        ? (result.browserInfo ? `已连接：${result.browserInfo}` : '连接成功！')
+        : (result.error || '连接失败'));
     } catch (err: unknown) {
       setConnStatus('error');
-      setConnMessage(err instanceof Error ? err.message : 'Connection test failed');
+      setConnMessage(err instanceof Error ? err.message : '连接测试失败');
     }
   }, [browserConfig]);
 
   return (
     <>
       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
-        Browser
+        浏览器
       </div>
 
       <div style={sharedStyles.field}>
-        <label style={sharedStyles.label}>Chrome / Edge Path</label>
+        <label style={sharedStyles.label}>Chrome / Edge 路径</label>
         <input type="text" value={browserConfig.chromePath}
           onChange={(e) => { setBrowserConfig((p) => ({ ...p, chromePath: e.target.value })); setConnStatus('idle'); setSaveMessage(''); }}
-          placeholder="Auto-detect (leave empty)" style={sharedStyles.input} />
-        <div style={sharedStyles.hint}>Leave empty to auto-detect Edge or Chrome on your system.</div>
+          placeholder="自动检测（留空即可）" style={sharedStyles.input} />
+        <div style={sharedStyles.hint}>留空将自动检测系统中的 Edge 或 Chrome。</div>
       </div>
 
       <div style={sharedStyles.field}>
-        <label style={sharedStyles.label}>CDP Port</label>
+        <label style={sharedStyles.label}>CDP 端口</label>
         <input type="number" min={1} max={65535} value={browserConfig.cdpPort}
           onChange={(e) => {
             const val = parseInt(e.target.value, 10);
@@ -435,14 +435,14 @@ function BrowserSection() {
             setConnStatus('idle'); setSaveMessage('');
           }}
           placeholder="9222" style={{ ...sharedStyles.input, width: 120 }} />
-        <div style={sharedStyles.hint}>Chrome must be running with --remote-debugging-port={'<port>'} for CDP to work.</div>
+        <div style={sharedStyles.hint}>Chrome 需要以 --remote-debugging-port={'<port>'} 启动才能使用 CDP。</div>
       </div>
 
       <div style={sharedStyles.btnRow}>
-        <button onClick={handleSave} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Save</button>
+        <button onClick={handleSave} style={{ ...sharedStyles.btn, ...sharedStyles.btnSave, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}><Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 保存</button>
         <button onClick={handleTest} disabled={connStatus === 'testing'}
           style={{ ...sharedStyles.btn, ...sharedStyles.btnTest, opacity: connStatus === 'testing' ? 0.5 : 1, cursor: connStatus === 'testing' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-          <Plug size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> {connStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+          <Plug size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> {connStatus === 'testing' ? '测试中...' : '测试连接'}
         </button>
       </div>
 
@@ -464,7 +464,7 @@ function NotificationsSection() {
     setNotifConfig((prev) => {
       const next = { ...prev, [key]: !prev[key] };
       window.settingsAPI?.saveNotificationConfig?.(next).then((r) => {
-        setSaveMessage(r?.success ? 'Notification settings saved' : (r?.error || 'Failed to save'));
+        setSaveMessage(r?.success ? '通知设置已保存' : (r?.error || '保存失败'));
         setTimeout(() => setSaveMessage(''), 2000);
       });
       return next;
@@ -476,14 +476,14 @@ function NotificationsSection() {
   return (
     <>
       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
-        Notifications
+        通知
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {[
-          { key: 'systemToast' as const, label: 'System Toast', hint: 'Windows notification when task completes' },
-          { key: 'petBubble' as const, label: 'Pet Bubble', hint: 'Show result summary above the pet' },
-          { key: 'petAnimation' as const, label: 'Pet Animation', hint: 'Play success/failure animation on the pet' },
+          { key: 'systemToast' as const, label: '系统通知', hint: '任务完成时弹出 Windows 通知' },
+          { key: 'petBubble' as const, label: '宠物气泡', hint: '在宠物上方显示结果摘要' },
+          { key: 'petAnimation' as const, label: '宠物动画', hint: '播放成功/失败动画' },
         ].map(({ key, label, hint }) => (
           <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer' }}>
             <input type="checkbox" checked={notifConfig[key]} onChange={() => toggle(key)}
@@ -498,12 +498,12 @@ function NotificationsSection() {
 
       {allOff && (
         <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--warning-bg)', color: 'var(--warning)', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <AlertTriangle size={14} strokeWidth={1.5} /> All notifications are off — you won&apos;t be reminded when tasks complete.
+          <AlertTriangle size={14} strokeWidth={1.5} /> 所有通知已关闭 — 任务完成时不会收到提醒。
         </div>
       )}
 
       {saveMessage && (
-        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-sm)', color: saveMessage.includes('Failed') ? 'var(--danger)' : 'var(--success)' }}>
+        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-sm)', color: (saveMessage.includes('Failed') || saveMessage.includes('失败')) ? 'var(--danger)' : 'var(--success)' }}>
           {saveMessage}
         </div>
       )}
@@ -523,7 +523,7 @@ function PermissionsSection() {
     setRiskLevel(level);
     setSaveMessage('');
     window.settingsAPI?.saveRiskLevel?.(level).then((r) => {
-      setSaveMessage(r?.success ? 'Permission settings saved' : (r?.error || 'Failed to save'));
+      setSaveMessage(r?.success ? '权限设置已保存' : (r?.error || '保存失败'));
       setTimeout(() => setSaveMessage(''), 2000);
     });
   }, []);
@@ -531,31 +531,31 @@ function PermissionsSection() {
   const options: { value: RiskLevel; label: string; color: string; hint: string; description: string }[] = [
     {
       value: 'low',
-      label: 'Low Risk',
+      label: '低风险',
       color: 'var(--success)',
-      hint: 'All tools require confirmation',
-      description: 'Every tool call (including read-only operations) will ask for your approval before executing. Safest mode, suitable for first-time users or sensitive environments.',
+      hint: '所有工具需要确认',
+      description: '所有工具调用（包括只读操作）在执行前都需要你的批准。最安全的模式，适合首次使用或敏感环境。',
     },
     {
       value: 'medium',
-      label: 'Medium Risk',
+      label: '中风险',
       color: 'var(--warning)',
-      hint: 'Critical tools require confirmation',
-      description: 'Read-only tools execute automatically. Write, edit, bash, and browser operations still require your approval. Balanced mode for daily use.',
+      hint: '关键工具需要确认',
+      description: '只读工具自动执行。写入、编辑、Shell 和浏览器操作仍需你的批准。适合日常使用的均衡模式。',
     },
     {
       value: 'high',
-      label: 'High Risk',
+      label: '高风险',
       color: 'var(--danger)',
-      hint: 'No confirmation needed',
-      description: 'All tools execute automatically without any confirmation. Most autonomous mode, suitable when you trust the agent to act independently.',
+      hint: '无需确认',
+      description: '所有工具自动执行，无需任何确认。自主性最高的模式，适合你信任 agent 独立操作的场景。',
     },
   ];
 
   return (
     <>
       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
-        Permissions
+        权限
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -599,12 +599,12 @@ function PermissionsSection() {
 
       {riskLevel === 'high' && (
         <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--danger-bg)', color: 'var(--danger)', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <AlertTriangle size={14} strokeWidth={1.5} /> Warning: High risk mode allows the agent to execute all operations without confirmation, including file deletion and shell commands.
+          <AlertTriangle size={14} strokeWidth={1.5} /> 警告：高风险模式允许 agent 无需确认即可执行所有操作，包括文件删除和 Shell 命令。
         </div>
       )}
 
       {saveMessage && (
-        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-sm)', color: saveMessage.includes('Failed') ? 'var(--danger)' : 'var(--success)' }}>
+        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-sm)', color: (saveMessage.includes('Failed') || saveMessage.includes('失败')) ? 'var(--danger)' : 'var(--success)' }}>
           {saveMessage}
         </div>
       )}
@@ -706,9 +706,9 @@ function ProfilesSection() {
     const id = `custom-${Date.now()}`;
     const newProfile: PetProfile = {
       id,
-      name: 'New Pet',
+      name: '新宠物',
       role: 'custom' as PetRole,
-      systemPrompt: CUSTOM_PROFILE_DEFAULT_PROMPT.replace('{name}', 'New Pet'),
+      systemPrompt: CUSTOM_PROFILE_DEFAULT_PROMPT.replace('{name}', '新宠物'),
       toolNames: [...CUSTOM_PROFILE_DEFAULT_TOOLS],
       enabled: true,
       icon: 'clawd-idle.gif',
@@ -810,7 +810,7 @@ function ProfilesSection() {
   }, [profiles, updateProfile]);
 
   if (!hasLoaded) {
-    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>Loading...</div>;
+    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>加载中...</div>;
   }
 
   const roleColors: Record<string, string> = {
@@ -821,7 +821,7 @@ function ProfilesSection() {
   return (
     <>
       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
-        Pet Profiles
+        宠物配置
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
@@ -1145,10 +1145,10 @@ export const SettingsWindow: React.FC = () => {
 
   const navItems: { key: Section; label: string; icon: React.ReactNode }[] = [
     { key: 'llm', label: 'LLM', icon: <Cpu size={16} strokeWidth={1.5} /> },
-    { key: 'browser', label: 'Browser', icon: <Globe size={16} strokeWidth={1.5} /> },
-    { key: 'notifications', label: 'Notifications', icon: <Bell size={16} strokeWidth={1.5} /> },
-    { key: 'permissions', label: 'Permissions', icon: <Shield size={16} strokeWidth={1.5} /> },
-    { key: 'pets', label: 'Pets', icon: <Bot size={16} strokeWidth={1.5} /> },
+    { key: 'browser', label: '浏览器', icon: <Globe size={16} strokeWidth={1.5} /> },
+    { key: 'notifications', label: '通知', icon: <Bell size={16} strokeWidth={1.5} /> },
+    { key: 'permissions', label: '权限', icon: <Shield size={16} strokeWidth={1.5} /> },
+    { key: 'pets', label: '宠物', icon: <Bot size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -1218,7 +1218,7 @@ export const SettingsWindow: React.FC = () => {
         fontSize: 'var(--text-xs)',
         color: 'var(--text-tertiary)',
       }}>
-        Your API key is stored locally on this device and never sent to our servers.
+        你的 API 密钥仅存储在本设备，绝不会发送到我们的服务器。
       </div>
     </div>
   );
