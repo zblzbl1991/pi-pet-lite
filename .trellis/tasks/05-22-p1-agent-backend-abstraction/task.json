@@ -1,0 +1,30 @@
+{
+  "id": "p1-agent-backend-abstraction",
+  "name": "05-22-p1-agent-backend-abstraction",
+  "title": "P1.1 Agent Backend 抽象层",
+  "description": "将 runtime.ts 对 pi-agent-core 的直接依赖抽象为 AgentBackend 接口，支持多引擎切换（pi-agent-core / LangChain / 自定义）。这是后续所有 P1/P2 能力的基础。",
+  "status": "backlog",
+  "dev_type": null,
+  "scope": null,
+  "package": "backend",
+  "priority": "P1",
+  "creator": "zbl",
+  "assignee": null,
+  "createdAt": "2026-05-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "agent-runtime-evolution",
+  "relatedFiles": [
+    "src/agent/runtime.ts",
+    "src/agent/remote-runtime.ts",
+    "src/agent/pet-manager.ts"
+  ],
+  "notes": "依赖 P0 基座完成。预计 Week 1-2。",
+  "meta": { "phase": "P1", "week": "1-2", "depends_on": ["05-22-agent-runtime-p0-foundation"] }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "p3-trace-debugger-ui",
+  "name": "05-22-p3-trace-debugger-ui",
+  "title": "P3.4 Trace 可视化调试 UI",
+  "description": "基于 Tracer 数据的可视化 trace viewer，展示每次用户请求的完整生命周期：LLM 调用、工具执行、状态转换。支持时间线视图、瀑布图、span 详情面板。集成到 Settings 或独立 DevTools 窗口。",
+  "status": "backlog",
+  "dev_type": null,
+  "scope": null,
+  "package": "fullstack",
+  "priority": "P3",
+  "creator": "zbl",
+  "assignee": null,
+  "createdAt": "2026-05-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "agent-runtime-evolution",
+  "relatedFiles": [
+    "src/agent/tracer.ts",
+    "src/storage/session-store.ts"
+  ],
+  "notes": "依赖 Tracer 数据格式稳定。中期目标。",
+  "meta": { "phase": "P3", "week": "2months+", "depends_on": ["05-22-agent-runtime-p0-foundation"] }
+}

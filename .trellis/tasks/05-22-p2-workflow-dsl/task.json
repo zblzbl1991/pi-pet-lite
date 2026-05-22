@@ -1,0 +1,30 @@
+{
+  "id": "p2-workflow-dsl",
+  "name": "05-22-p2-workflow-dsl",
+  "title": "P2.3 工作流编排 DSL",
+  "description": "从代码编排走向声明式编排。定义 YAML/JSON DSL 描述多 agent 工作流（依赖关系、条件分支、并行执行），支持 workflow run/stop/resume 生命周期。",
+  "status": "backlog",
+  "dev_type": null,
+  "scope": null,
+  "package": "backend",
+  "priority": "P2",
+  "creator": "zbl",
+  "assignee": null,
+  "createdAt": "2026-05-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "agent-runtime-evolution",
+  "relatedFiles": [
+    "src/agent/pet-manager.ts",
+    "src/agent/task-queue.ts",
+    "src/storage/blackboard.ts"
+  ],
+  "notes": "依赖 P1.2 任务调度升级和 P1.3 Agent 间直连。预计 Week 8+。",
+  "meta": { "phase": "P2", "week": "8+", "depends_on": ["05-22-p1-task-scheduler-upgrade", "05-22-p1-agent-direct-messaging"] }
+}

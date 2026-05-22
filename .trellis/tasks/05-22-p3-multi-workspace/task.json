@@ -1,0 +1,31 @@
+{
+  "id": "p3-multi-workspace",
+  "name": "05-22-p3-multi-workspace",
+  "title": "P3.1 多 Workspace 隔离",
+  "description": "支持多个独立 workspace，各有自己的 agents、sessions、blackboard、config。不同项目/场景使用不同 workspace，数据完全隔离。",
+  "status": "backlog",
+  "dev_type": null,
+  "scope": null,
+  "package": "backend",
+  "priority": "P3",
+  "creator": "zbl",
+  "assignee": null,
+  "createdAt": "2026-05-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "agent-runtime-evolution",
+  "relatedFiles": [
+    "src/storage/session-store.ts",
+    "src/storage/blackboard.ts",
+    "src/config/config-store.ts",
+    "src/main/main.ts"
+  ],
+  "notes": "长期目标，3+ 月。",
+  "meta": { "phase": "P3", "week": "3months+", "depends_on": ["05-22-p1-agent-backend-abstraction"] }
+}

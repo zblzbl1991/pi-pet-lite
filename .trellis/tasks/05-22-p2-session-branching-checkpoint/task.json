@@ -1,0 +1,30 @@
+{
+  "id": "p2-session-branching-checkpoint",
+  "name": "05-22-p2-session-branching-checkpoint",
+  "title": "P2.2 Session 分支与 Checkpoint",
+  "description": "支持对话分叉（从某条消息开始走不同路径）、Checkpoint/Resume（保存 agent 完整状态快照含 thinking context）、对话导出/导入（JSON 格式可跨设备迁移）。",
+  "status": "backlog",
+  "dev_type": null,
+  "scope": null,
+  "package": "backend",
+  "priority": "P2",
+  "creator": "zbl",
+  "assignee": null,
+  "createdAt": "2026-05-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "agent-runtime-evolution",
+  "relatedFiles": [
+    "src/storage/session-store.ts",
+    "src/agent/runtime.ts",
+    "src/agent/pet-manager.ts"
+  ],
+  "notes": "预计 Week 7+。",
+  "meta": { "phase": "P2", "week": "7+", "depends_on": ["05-22-p1-agent-backend-abstraction"] }
+}

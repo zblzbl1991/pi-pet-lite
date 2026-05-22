@@ -1,0 +1,29 @@
+{
+  "id": "p3-distributed-runtime",
+  "name": "05-22-p3-distributed-runtime",
+  "title": "P3.3 分布式 Runtime",
+  "description": "A2A 协议扩展，不只是调远程 agent，而是整个 runtime 可分布式部署。支持 agent 发现、负载均衡、跨机器 agent 协作。",
+  "status": "backlog",
+  "dev_type": null,
+  "scope": null,
+  "package": "backend",
+  "priority": "P3",
+  "creator": "zbl",
+  "assignee": null,
+  "createdAt": "2026-05-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "agent-runtime-evolution",
+  "relatedFiles": [
+    "src/agent/remote-runtime.ts",
+    "src/agent/pet-manager.ts"
+  ],
+  "notes": "长期愿景。依赖 A2A 集成和 Agent Backend 抽象。",
+  "meta": { "phase": "P3", "week": "3months+", "depends_on": ["05-22-p1-agent-backend-abstraction", "05-22-p1-agent-direct-messaging"] }
+}

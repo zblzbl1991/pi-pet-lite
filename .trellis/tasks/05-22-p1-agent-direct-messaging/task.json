@@ -1,0 +1,31 @@
+{
+  "id": "p1-agent-direct-messaging",
+  "name": "05-22-p1-agent-direct-messaging",
+  "title": "P1.3 Agent 间直连通信",
+  "description": "让 agent 之间可以不经过 Chief 中转直接通信。新增 AgentChannel 原语，基于 EventBus 的 agent:message 事件。支持 Coder 直接向 Scout 请求信息、Analyst 直接读取 Blackboard 并通知其他 agent。",
+  "status": "backlog",
+  "dev_type": null,
+  "scope": null,
+  "package": "backend",
+  "priority": "P1",
+  "creator": "zbl",
+  "assignee": null,
+  "createdAt": "2026-05-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "agent-runtime-evolution",
+  "relatedFiles": [
+    "src/agent/event-bus.ts",
+    "src/agent/pet-manager.ts",
+    "src/agent/tools/delegate.ts",
+    "src/storage/blackboard.ts"
+  ],
+  "notes": "预计 Week 4。",
+  "meta": { "phase": "P1", "week": "3-4", "depends_on": ["05-22-p1-agent-backend-abstraction"] }
+}

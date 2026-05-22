@@ -1,0 +1,41 @@
+{
+  "id": "agent-runtime-p0-foundation",
+  "name": "05-22-agent-runtime-p0-foundation",
+  "title": "Agent Runtime P0 基座能力",
+  "description": "为 Clawd 补齐 Agent Runtime 的三个基础能力：EventBus 事件总线、Session 对话持久化、Tracer 可观测性。这是 Agent Runtime 演进路线的起点。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": "backend",
+  "priority": "P0",
+  "creator": "zbl",
+  "assignee": "zbl",
+  "createdAt": "2026-05-22",
+  "completedAt": "2026-05-22",
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": ["event-bus", "session-store", "tracer"],
+  "children": [],
+  "parent": "agent-runtime-evolution",
+  "relatedFiles": [
+    "src/agent/event-bus.ts",
+    "src/storage/session-store.ts",
+    "src/agent/tracer.ts",
+    "src/agent/runtime.ts",
+    "src/agent/pet-manager.ts",
+    "src/agent/agent-process.ts"
+  ],
+  "notes": "已完成。EventBus 双发模式集成，SessionStore 独立 clawd-sessions.db，Tracer 共享数据库。",
+  "meta": {
+    "phase": "P0",
+    "codeStats": {
+      "newFiles": 3,
+      "newLines": 625,
+      "modifiedFiles": 5,
+      "modifiedLines": 200
+    }
+  }
+}
