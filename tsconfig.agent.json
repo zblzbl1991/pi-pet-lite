@@ -12,5 +12,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/agent/**/*", "src/shared/**/*", "src/config/**/*", "src/electron-shim.d.ts"]
+  "include": ["src/agent/**/*", "src/storage/**/*", "src/shared/**/*", "src/config/**/*", "src/electron-shim.d.ts"]
 }

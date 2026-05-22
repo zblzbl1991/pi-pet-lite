@@ -25,6 +25,8 @@ import { readConfig } from '../config/config-store';
 import { getToolsForProfile, restoreSchedules, setScheduleFireCallback } from './tools/registry';
 import { getDefaultProfile, getEnabledSpecialistProfiles } from './profiles';
 import { recordExperience, summarizeRecentFailures, buildKnownIssuesText } from './experience';
+import { EventBus, AgentEvents } from './event-bus';
+import type { SessionStore } from '../storage/session-store';
 
 /** Type aliases for pi-agent-core types (resolved at runtime via dynamic import) */
 type PiAgentEvent = import('@earendil-works/pi-agent-core').AgentEvent;
@@ -135,7 +137,10 @@ function hasToolCalls(content: PiAssistantMessage['content']): boolean {
 export async function createAgentRuntime(
   onEvent: AgentEventCallback,
   getConfirmation: ConfirmationHandler,
-  profile?: PetProfile
+  profile?: PetProfile,
+  eventBus?: EventBus,
+  sessionStore?: SessionStore,
+  sessionId?: string
 ): Promise<AgentRuntime> {
   // Resolve profile: use provided profile or default to Chief
   const resolvedProfile = profile ?? getDefaultProfile();
@@ -249,11 +254,26 @@ export async function createAgentRuntime(
     },
   });
 
+  // Restore session history if available
+  if (sessionStore && sessionId) {
+    try {
+      const restored = sessionStore.restoreMessages(sessionId);
+      if (restored.length > 0) {
+        // Cast: restoreMessages returns parsed JSON that matches AgentMessage shape
+        agent.state.messages = restored as typeof agent.state.messages;
+        console.log(`[runtime] Restored ${restored.length} messages for session ${sessionId}`);
+      }
+    } catch (err) {
+      console.error('[runtime] Failed to restore session messages:', err);
+    }
+  }
+
   // Subscribe to agent events and forward to renderer
   agent.subscribe((event: PiAgentEvent) => {
     switch (event.type) {
       case 'agent_start':
         onEvent({ type: 'state-change', state: AgentState.GREETING });
+        eventBus?.emit(AgentEvents.AGENT_START);
         break;
 
       case 'message_start': {
@@ -271,6 +291,7 @@ export async function createAgentRuntime(
               streaming: true,
             },
           });
+          eventBus?.emit(AgentEvents.MESSAGE_START, { id: currentAssistantMessageId, role: 'assistant', text });
         }
         break;
       }
@@ -279,13 +300,15 @@ export async function createAgentRuntime(
         if (currentAssistantMessageId) {
           const ame = event.assistantMessageEvent;
           if (ame.type === 'text_delta' && 'delta' in ame) {
+            const delta = (ame as Extract<PiAssistantMessageEvent, { type: 'text_delta' }>).delta;
             onEvent({
               type: 'chat-message-update',
               chatDelta: {
                 id: currentAssistantMessageId,
-                delta: (ame as Extract<PiAssistantMessageEvent, { type: 'text_delta' }>).delta,
+                delta,
               },
             });
+            eventBus?.emit(AgentEvents.MESSAGE_DELTA, { id: currentAssistantMessageId, delta });
           } else if (ame.type === 'thinking_delta' && 'delta' in ame) {
             // Forward thinking delta
             if (!currentThinkingId) {
@@ -322,6 +345,20 @@ export async function createAgentRuntime(
               chatEnd: { id: currentAssistantMessageId },
             });
           }
+          eventBus?.emit(AgentEvents.MESSAGE_END, {
+            id: currentAssistantMessageId,
+            role: 'assistant',
+            content: getAssistantText(assistantMsg.content),
+            hasToolCalls: hasToolCalls(assistantMsg.content),
+          });
+          // Persist assistant message to session store
+          if (sessionStore && sessionId) {
+            try {
+              sessionStore.appendMessage(sessionId, 'assistant', assistantMsg);
+            } catch (err) {
+              console.error('[runtime] Failed to persist assistant message:', err);
+            }
+          }
           currentAssistantMessageId = null;
           currentThinkingId = null;
         }
@@ -341,6 +378,11 @@ export async function createAgentRuntime(
             status: 'running',
             args: event.args as Record<string, unknown>,
           },
+        });
+        eventBus?.emit(AgentEvents.TOOL_START, {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          args: event.args,
         });
         break;
 
@@ -376,25 +418,44 @@ export async function createAgentRuntime(
           ...(event.isError && resultText ? { err: resultText } : {}),
           ...(event.isError && toolArgs ? { args: toolArgs } : {}),
         });
+
+        eventBus?.emit(AgentEvents.TOOL_END, {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          isError: event.isError,
+          result: resultText,
+          duration,
+        });
         break;
       }
 
       case 'tool_execution_update': {
         // Forward partial result updates
         const partial = (event as { partialResult?: unknown }).partialResult;
+        const partialStr = typeof partial === 'string' ? partial : JSON.stringify(partial);
         onEvent({
           type: 'tool-execution',
           toolExecution: {
             toolCallId: event.toolCallId,
             toolName: event.toolName,
             status: 'running',
-            partialResult: typeof partial === 'string' ? partial : JSON.stringify(partial),
+            partialResult: partialStr,
           },
+        });
+        eventBus?.emit(AgentEvents.TOOL_UPDATE, {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          partialResult: partialStr,
         });
         break;
       }
 
       case 'agent_end': {
+        eventBus?.emit(AgentEvents.AGENT_END, {
+          stopReason: event.messages.length > 0
+            ? ((event.messages[event.messages.length - 1] as PiAssistantMessage).stopReason ?? 'ok')
+            : 'ok',
+        });
         const msgs = event.messages;
         const lastMsg = msgs[msgs.length - 1];
         // Capture the last assistant text for the prompt() return value
@@ -430,6 +491,7 @@ export async function createAgentRuntime(
           type: 'turn-indicator',
           turnIndicator: { turn: turnCounter, event: 'start' },
         });
+        eventBus?.emit(AgentEvents.STATE_CHANGE, { turn: turnCounter, event: 'turn_start' });
         break;
 
       case 'turn_end':
@@ -437,6 +499,7 @@ export async function createAgentRuntime(
           type: 'turn-indicator',
           turnIndicator: { turn: turnCounter, event: 'end' },
         });
+        eventBus?.emit(AgentEvents.STATE_CHANGE, { turn: turnCounter, event: 'turn_end' });
         break;
 
       default:
@@ -457,6 +520,17 @@ export async function createAgentRuntime(
   return {
     async prompt(text: string): Promise<string> {
       lastAssistantText = '';
+      // Persist user message before sending to agent
+      if (sessionStore && sessionId) {
+        try {
+          sessionStore.appendMessage(sessionId, 'user', {
+            role: 'user',
+            content: [{ type: 'text', text }],
+          });
+        } catch (err) {
+          console.error('[runtime] Failed to persist user message:', err);
+        }
+      }
       await agent.prompt(text);
       return lastAssistantText;
     },

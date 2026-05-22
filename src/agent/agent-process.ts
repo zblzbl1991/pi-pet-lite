@@ -20,10 +20,18 @@ import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandl
 import { PetManager } from './pet-manager';
 import { setPetManagerForDelegation } from './tools/delegate';
 import { getDefaultProfile } from './profiles';
+import { EventBus } from './event-bus';
+import { SessionStore } from '../storage/session-store';
+import { Tracer } from './tracer';
+import { SESSIONS_DB_FILENAME } from '../shared/constants';
+import path from 'path';
 
 let agentPort: MessagePortMain | null = null;
 let agentRuntime: AgentRuntime | null = null;
 let petManager: PetManager | null = null;
+let eventBus: EventBus | null = null;
+let sessionStore: SessionStore | null = null;
+let tracer: Tracer | null = null;
 
 /** Whether multi-pet mode is enabled */
 let multiPetMode = false;
@@ -198,13 +206,39 @@ async function initLegacyAgent(): Promise<void> {
  * The Chief agent is created on-demand when the first message arrives.
  */
 async function initPetManager(): Promise<void> {
+  eventBus = new EventBus();
+
+  // Initialize SessionStore for conversation persistence
+  const userDataPath = process.env.CLAWD_USER_DATA;
+  if (userDataPath) {
+    try {
+      const dbPath = path.join(userDataPath, SESSIONS_DB_FILENAME);
+      sessionStore = new SessionStore(dbPath, eventBus);
+      sessionStore.pruneOldSessions();
+      console.log('[agent-process] SessionStore initialized');
+
+      // Initialize Tracer sharing the same database
+      try {
+        tracer = new Tracer(sessionStore.database, eventBus);
+        tracer.pruneOldTraces();
+        console.log('[agent-process] Tracer initialized');
+      } catch (err) {
+        console.error('[agent-process] Failed to initialize Tracer:', err);
+      }
+    } catch (err) {
+      console.error('[agent-process] Failed to initialize SessionStore:', err);
+    }
+  }
+
   petManager = new PetManager(
     handleAgentEvent,
     createConfirmationHandler(),
     // Status change callback: forward to renderer
     (petId: string, status: PetStatus) => {
       sendToRenderer({ type: 'pet-status', petId, status });
-    }
+    },
+    eventBus,
+    sessionStore ?? undefined
   );
 
   petManager.startReaper();

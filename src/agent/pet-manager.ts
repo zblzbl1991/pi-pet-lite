@@ -26,6 +26,8 @@ import {
   PET_MANAGER_MAX_QUEUE_DEPTH,
 } from '../shared/constants';
 import type { PetProfile, PetStatus, PetStatusReportMessage } from '../shared/types';
+import type { EventBus } from './event-bus';
+import type { SessionStore } from '../storage/session-store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +39,8 @@ interface ManagedPet {
   profile: PetProfile;
   /** The agent runtime instance */
   agent: AgentRuntime;
+  /** Active session ID for conversation persistence */
+  sessionId: string;
   /** Current status */
   status: PetStatus;
   /** Timestamp of last activity (prompt or response) */
@@ -94,23 +98,31 @@ export class PetManager {
   private readonly onEvent: AgentEventCallback;
   private readonly getConfirmation: ConfirmationHandler;
   private reaperInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly eventBus: EventBus | null;
+  private readonly sessionStore: SessionStore | null;
 
   /**
    * @param onEvent - Callback for agent events forwarded to the renderer
    * @param getConfirmation - Confirmation handler for tool calls
    * @param onStatusChange - Optional callback for pet status changes
+   * @param eventBus - Optional event bus for decoupled event distribution
+   * @param sessionStore - Optional session store for conversation persistence
    * @param config - Optional configuration overrides
    */
   constructor(
     onEvent: AgentEventCallback,
     getConfirmation: ConfirmationHandler,
     onStatusChange?: StatusChangeCallback,
+    eventBus?: EventBus,
+    sessionStore?: SessionStore,
     config?: Partial<PetManagerConfig>
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.onEvent = onEvent;
     this.onStatusChange = onStatusChange ?? null;
     this.getConfirmation = getConfirmation;
+    this.eventBus = eventBus ?? null;
+    this.sessionStore = sessionStore ?? null;
   }
 
   /**
@@ -237,6 +249,10 @@ export class PetManager {
     const managed = this.agents.get(petId);
     if (managed) {
       managed.agent.dispose();
+      // Mark session as disposed (data preserved for future restore)
+      if (this.sessionStore && managed.sessionId) {
+        this.sessionStore.disposeSession(petId);
+      }
       this.agents.delete(petId);
     }
 
@@ -314,15 +330,29 @@ export class PetManager {
 
     // Create the agent runtime (local or remote)
     try {
+      // Resolve session: restore existing or create new
+      let sessionId: string | undefined;
+      if (this.sessionStore && !profile.a2a) {
+        sessionId = this.sessionStore.getOrCreateSession(petId);
+      }
+
       console.log(`[pet-mgr] Creating ${profile.a2a ? 'REMOTE' : 'LOCAL'} runtime for ${petId}...`);
       const agent = profile.a2a
         ? await createRemoteAgentRuntime(this.onEvent, this.getConfirmation, profile)
-        : await createAgentRuntime(this.onEvent, this.getConfirmation, profile);
-      console.log(`[pet-mgr] Runtime created for ${petId}`);
+        : await createAgentRuntime(
+            this.onEvent,
+            this.getConfirmation,
+            profile,
+            this.eventBus ?? undefined,
+            this.sessionStore ?? undefined,
+            sessionId
+          );
+      console.log(`[pet-mgr] Runtime created for ${petId}${sessionId ? ` (session: ${sessionId})` : ''}`);
 
       const managed: ManagedPet = {
         profile,
         agent,
+        sessionId: sessionId ?? '',
         status: 'idle',
         lastActivity: Date.now(),
         successCount: 0,

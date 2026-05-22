@@ -211,6 +211,7 @@ export const IPC_BB_QUERY = 'blackboard:query';
 
 /** Blackboard database filename */
 export const BLACKBOARD_DB_FILENAME = 'clawd-blackboard.db';
+export const SESSIONS_DB_FILENAME = 'clawd-sessions.db';
 
 /** Default capacity limits per namespace */
 export const BLACKBOARD_DEFAULT_CAPACITY = {
