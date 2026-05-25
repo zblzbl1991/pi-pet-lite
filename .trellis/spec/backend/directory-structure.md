@@ -21,8 +21,12 @@ src/
 ├── agent/                   # Agent utility process
 │   ├── agent-process.ts     # Utility process entry: MessagePort relay
 │   ├── llm.ts               # Dynamic ESM import wrapper for pi-ai
-│   ├── runtime.ts           # Agent runtime: wraps pi-agent-core Agent
+│   ├── runtime.ts           # Agent runtime: thin wrapper over AgentBackend
 │   ├── state-machine.ts     # State transitions + GIF mapping
+│   ├── backends/            # AgentBackend implementations (engine abstraction)
+│   │   ├── types.ts         # AgentBackend interface, BackendEvent, BackendConfig
+│   │   ├── pi-agent-backend.ts  # Default backend wrapping pi-agent-core
+│   │   └── factory.ts       # createBackend() factory function
 │   └── tools/               # Agent tools
 │       ├── registry.ts      # Central tool registry
 │       ├── browser.ts       # Browser automation tool
@@ -52,7 +56,7 @@ src/
 - **`src/shared/`** — Types and constants imported by all processes. No runtime logic.
 - **`src/agent/tools/`** — Each tool file exports a `buildXxxTool()` function returning `PiAgentTool[]`.
 
-New features that add tools go in `src/agent/tools/`. New windows add entries to `src/main/windows.ts`, a preload in `src/preload/`, and a renderer in `src/renderer/`.
+New features that add tools go in `src/agent/tools/`. New LLM engine backends go in `src/agent/backends/`. New windows add entries to `src/main/windows.ts`, a preload in `src/preload/`, and a renderer in `src/renderer/`.
 
 ---
 
@@ -66,6 +70,7 @@ New features that add tools go in `src/agent/tools/`. New windows add entries to
 | Functions | camelCase | `createPetWindow()`, `readConfig()` |
 | IPC channels | kebab-case, namespaced | `'agent-message'`, `'chat:sync-history'` |
 | Type aliases (dynamic imports) | `Pi` prefix | `PiAgentTool`, `PiAgentToolResult` |
+| Backend event types | `Backend` prefix | `BackendEvent`, `BackendState`, `BackendConfig` |
 
 ---
 

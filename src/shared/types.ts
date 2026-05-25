@@ -162,6 +162,8 @@ export interface PetProfile {
   enabled?: boolean;
   /** A2A remote agent connection. When present, this profile uses RemoteAgentRuntime. */
   a2a?: A2AConfig;
+  /** Backend engine identifier. Defaults to 'pi-agent-core' if not specified. */
+  backend?: string;
 }
 
 /** Thinking level for agent reasoning */

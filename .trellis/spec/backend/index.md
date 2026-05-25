@@ -35,4 +35,43 @@ The goal is to help AI assistants and new team members understand how YOUR proje
 
 ---
 
+## Architecture: AgentBackend Abstraction Layer
+
+The agent layer uses a **backend abstraction** pattern to decouple the runtime from any specific LLM engine.
+
+### Design Decision: Agent class-level abstraction
+
+**Context**: The runtime could be abstracted at the `AgentRuntime` level or at the inner `Agent` class level.
+
+**Decision**: Abstract at `Agent` class level (`AgentBackend` interface). The `AgentRuntime` keeps ownership of tool registry, trust policy, session persistence, EventBus integration, and experience logging. Only the LLM engine interaction is delegated to a backend.
+
+**Consequences**:
+- Switching engines only requires a new `AgentBackend` implementation
+- Tool registration, confirmation flow, session persistence are all reused
+- `runtime.ts` is a thin orchestration layer, not an engine wrapper
+
+### How it works
+
+```
+PetManager → createAgentRuntime() → createBackend(factory) → AgentBackend impl
+                                         ↓
+                                   PiAgentBackend (default)
+                                         ↓
+                                   pi-agent-core Agent
+```
+
+1. **`AgentBackend` interface** (`src/agent/backends/types.ts`): `prompt()`, `abort()`, `dispose()`, `subscribe()`, `state`, `setMessages()`
+2. **`BackendEvent` union type**: Engine-agnostic events (start, end, message_*, tool_*, turn_*, error)
+3. **`PiAgentBackend`** (`src/agent/backends/pi-agent-backend.ts`): Default backend wrapping pi-agent-core, converts `PiAgentEvent → BackendEvent` internally
+4. **Factory** (`src/agent/backends/factory.ts`): `createBackend(type, config)` selects backend by `PetProfile.backend` field (defaults to `'pi-agent-core'`)
+
+### Adding a new backend
+
+1. Implement `AgentBackend` interface in `src/agent/backends/<name>-backend.ts`
+2. Emit `BackendEvent` events via `subscribe()`
+3. Register in `factory.ts`'s `createBackend()` switch
+4. Add `backend: '<name>'` to desired `PetProfile`
+
+---
+
 **Language**: All documentation should be written in **English**.

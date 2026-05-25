@@ -1,24 +1,22 @@
 /**
  * Agent runtime for the Clawd desktop pet.
  *
- * Wraps pi-agent-core's Agent class with:
+ * Wraps an AgentBackend (default: pi-agent-core) with:
  * - LLM model creation from config
  * - Tool registration via the centralized tool registry
  * - beforeToolCall hook for trust policy enforcement
  * - Scheduled task restoration on startup
  * - Event subscription that forwards to a callback (for IPC to renderer)
+ * - EventBus, SessionStore, Tracer integrations
  *
- * Uses dynamic import() to load ESM-only pi-agent-core from CommonJS context.
- *
- * NOTE: We avoid using namespace-qualified types (e.g. `core.AgentEvent`)
- * because the dynamic import returns a module object without module-level
- * namespace merging. Instead we define local type aliases from the imported
- * module's types.
+ * The runtime delegates engine-specific work to the AgentBackend.
+ * The backend handles Agent creation, event conversion, and the
+ * prompt/abort/dispose lifecycle.
  */
 
-import { AgentState, TrustLevel, ThinkingLevel, RiskLevel } from '../shared/types';
+import { AgentState, TrustLevel, RiskLevel } from '../shared/types';
 import type { PetProfile } from '../shared/types';
-import { TRUST_POLICY, RISK_TRUST_POLICIES } from '../shared/constants';
+import { RISK_TRUST_POLICIES } from '../shared/constants';
 import { createModel } from './llm';
 import { getLLMConfig } from './llm';
 import { readConfig } from '../config/config-store';
@@ -27,41 +25,12 @@ import { getDefaultProfile, getEnabledSpecialistProfiles } from './profiles';
 import { recordExperience, summarizeRecentFailures, buildKnownIssuesText } from './experience';
 import { EventBus, AgentEvents } from './event-bus';
 import type { SessionStore } from '../storage/session-store';
+import { createBackend } from './backends/factory';
+import type { AgentBackend, BackendEvent, BackendConfig } from './backends/types';
+import { BackendEventType } from './backends/types';
 
-/** Type aliases for pi-agent-core types (resolved at runtime via dynamic import) */
-type PiAgentEvent = import('@earendil-works/pi-agent-core').AgentEvent;
-type PiAssistantMessage = import('@earendil-works/pi-ai').AssistantMessage;
-type PiToolResultMessage = import('@earendil-works/pi-ai').ToolResultMessage;
-type PiAssistantMessageEvent = import('@earendil-works/pi-ai').AssistantMessageEvent;
-type PiAgentToolResult = import('@earendil-works/pi-agent-core').AgentToolResult<unknown>;
+/** Type alias for pi-agent-core thinking level */
 type PiThinkingLevel = import('@earendil-works/pi-agent-core').ThinkingLevel;
-type PiToolExecutionMode = import('@earendil-works/pi-agent-core').ToolExecutionMode;
-
-/** Cached dynamic imports */
-let piAgentCoreModule: typeof import('@earendil-works/pi-agent-core') | null = null;
-let piAiModule: typeof import('@earendil-works/pi-ai') | null = null;
-
-/**
- * True dynamic import that bypasses TypeScript's CJS transpilation.
- * See llm.ts for explanation.
- */
-const dynamicImport = new Function('modulePath', 'return import(modulePath)') as <T>(
-  modulePath: string
-) => Promise<T>;
-
-async function loadPiAgentCore() {
-  if (!piAgentCoreModule) {
-    piAgentCoreModule = await dynamicImport<typeof import('@earendil-works/pi-agent-core')>('@earendil-works/pi-agent-core');
-  }
-  return piAgentCoreModule;
-}
-
-async function loadPiAi() {
-  if (!piAiModule) {
-    piAiModule = await dynamicImport<typeof import('@earendil-works/pi-ai')>('@earendil-works/pi-ai');
-  }
-  return piAiModule;
-}
 
 /** Callback type for events forwarded to the renderer */
 export interface AgentEventCallback {
@@ -99,40 +68,15 @@ export interface AgentRuntime {
 }
 
 /**
- * Extract text content from an AssistantMessage's content array.
- */
-function getAssistantText(content: PiAssistantMessage['content']): string {
-  return content
-    .filter((c): c is Extract<typeof c, { type: 'text' }> => c.type === 'text')
-    .map((c) => c.text)
-    .join('');
-}
-
-/**
- * Extract text content from a ToolResultMessage's content array.
- * Tool results use (TextContent | ImageContent)[] which differs from AssistantMessage.
- */
-function getToolResultText(content: PiToolResultMessage['content']): string {
-  return content
-    .filter((c): c is Extract<typeof c, { type: 'text' }> => c.type === 'text')
-    .map((c) => c.text)
-    .join('');
-}
-
-/**
- * Check if an AssistantMessage contains tool call blocks.
- */
-function hasToolCalls(content: PiAssistantMessage['content']): boolean {
-  return content.some((c) => c.type === 'toolCall');
-}
-
-/**
  * Initialize and return the Clawd agent runtime.
  *
  * @param onEvent - Callback for agent events forwarded to the renderer
  * @param getConfirmation - Function that sends confirmation to renderer and returns the user's response
  * @param profile - Optional PetProfile to configure tools, system prompt, and trust policy.
  *                  Defaults to the Chief profile if not specified (backward compatible).
+ * @param eventBus - Optional event bus for decoupled event distribution
+ * @param sessionStore - Optional session store for conversation persistence
+ * @param sessionId - Optional session ID for restoring conversation history
  */
 export async function createAgentRuntime(
   onEvent: AgentEventCallback,
@@ -145,11 +89,7 @@ export async function createAgentRuntime(
   // Resolve profile: use provided profile or default to Chief
   const resolvedProfile = profile ?? getDefaultProfile();
 
-  const core = await loadPiAgentCore();
-  const ai = await loadPiAi();
-
   // Create the LLM model from config
-  // If the profile has LLM overrides, they will be applied after model creation
   const { model, apiKey } = await createModel();
 
   // Read thinkingLevel from config (profile override takes precedence if set)
@@ -198,41 +138,38 @@ export async function createAgentRuntime(
     }
   }
 
-  // Track streaming message IDs for the renderer
-  let currentAssistantMessageId: string | null = null;
-  let currentThinkingId: string | null = null;
-  let lastAssistantText = '';
-  let messageCounter = 0;
+  // Track state for event handling
   let turnCounter = 0;
   const toolStartTimes = new Map<string, number>();
   const toolStartArgs = new Map<string, Record<string, unknown>>();
 
-  // Create the Agent
-  const agent = new core.Agent({
-    initialState: {
-      systemPrompt,
-      model,
-      thinkingLevel,
-      tools,
-      messages: [],
-    },
-    streamFn: ai.streamSimple,
+  // Build the backend configuration
+  const backendConfig: BackendConfig = {
+    systemPrompt,
+    model,
+    apiKey,
+    thinkingLevel,
+    tools,
+    toolExecution: 'sequential',
+    streamFn: await loadStreamFn(),
     getApiKey: async (_provider: string) => apiKey,
-    toolExecution: 'sequential' as PiToolExecutionMode,
-    beforeToolCall: async (context, signal) => {
-      const toolName = context.toolCall.name;
+    beforeToolCall: async (context: unknown, signal: AbortSignal | undefined) => {
+      const ctx = context as {
+        toolCall: { name: string; id: string };
+        args: unknown;
+      };
+      const toolName = ctx.toolCall.name;
       const trustLevel = effectiveTrustPolicy[toolName] ?? TrustLevel.CONFIRM_ONCE;
-      const args = context.args as Record<string, unknown>;
+      const args = ctx.args as Record<string, unknown>;
 
       if (trustLevel === TrustLevel.AUTO) {
-        // Allow execution without confirmation
         return undefined;
       }
 
       // Race the confirmation against abort signal so we don't block on a dead run
       const approved = await Promise.race([
         confirmationHandler(
-          context.toolCall.id,
+          ctx.toolCall.id,
           toolName,
           args
         ),
@@ -252,15 +189,17 @@ export async function createAgentRuntime(
 
       return undefined;
     },
-  });
+  };
+
+  // Create the backend via the factory
+  const backend: AgentBackend = await createBackend(resolvedProfile.backend, backendConfig);
 
   // Restore session history if available
   if (sessionStore && sessionId) {
     try {
       const restored = sessionStore.restoreMessages(sessionId);
       if (restored.length > 0) {
-        // Cast: restoreMessages returns parsed JSON that matches AgentMessage shape
-        agent.state.messages = restored as typeof agent.state.messages;
+        backend.setMessages(restored);
         console.log(`[runtime] Restored ${restored.length} messages for session ${sessionId}`);
       }
     } catch (err) {
@@ -268,249 +207,16 @@ export async function createAgentRuntime(
     }
   }
 
-  // Subscribe to agent events and forward to renderer
-  agent.subscribe((event: PiAgentEvent) => {
-    switch (event.type) {
-      case 'agent_start':
-        onEvent({ type: 'state-change', state: AgentState.GREETING });
-        eventBus?.emit(AgentEvents.AGENT_START);
-        break;
-
-      case 'message_start': {
-        const msg = event.message;
-        if (msg.role === 'assistant') {
-          const assistantMsg = msg as PiAssistantMessage;
-          currentAssistantMessageId = `msg-${++messageCounter}-${Date.now()}`;
-          const text = getAssistantText(assistantMsg.content);
-          onEvent({
-            type: 'chat-message',
-            chatMessage: {
-              id: currentAssistantMessageId,
-              role: 'assistant',
-              content: text,
-              streaming: true,
-            },
-          });
-          eventBus?.emit(AgentEvents.MESSAGE_START, { id: currentAssistantMessageId, role: 'assistant', text });
-        }
-        break;
-      }
-
-      case 'message_update': {
-        if (currentAssistantMessageId) {
-          const ame = event.assistantMessageEvent;
-          if (ame.type === 'text_delta' && 'delta' in ame) {
-            const delta = (ame as Extract<PiAssistantMessageEvent, { type: 'text_delta' }>).delta;
-            onEvent({
-              type: 'chat-message-update',
-              chatDelta: {
-                id: currentAssistantMessageId,
-                delta,
-              },
-            });
-            eventBus?.emit(AgentEvents.MESSAGE_DELTA, { id: currentAssistantMessageId, delta });
-          } else if (ame.type === 'thinking_delta' && 'delta' in ame) {
-            // Forward thinking delta
-            if (!currentThinkingId) {
-              currentThinkingId = currentAssistantMessageId;
-            }
-            onEvent({
-              type: 'chat-thinking',
-              chatThinking: {
-                id: currentThinkingId,
-                delta: (ame as { type: 'thinking_delta'; delta: string }).delta,
-              },
-            });
-          }
-        }
-        break;
-      }
-
-      case 'message_end': {
-        const msg = event.message;
-        if (msg.role === 'assistant' && currentAssistantMessageId) {
-          const assistantMsg = msg as PiAssistantMessage;
-          if (hasToolCalls(assistantMsg.content)) {
-            onEvent({
-              type: 'chat-message-end',
-              chatEnd: { id: currentAssistantMessageId },
-            });
-            onEvent({
-              type: 'state-change',
-              state: AgentState.EXECUTING,
-            });
-          } else {
-            onEvent({
-              type: 'chat-message-end',
-              chatEnd: { id: currentAssistantMessageId },
-            });
-          }
-          eventBus?.emit(AgentEvents.MESSAGE_END, {
-            id: currentAssistantMessageId,
-            role: 'assistant',
-            content: getAssistantText(assistantMsg.content),
-            hasToolCalls: hasToolCalls(assistantMsg.content),
-          });
-          // Persist assistant message to session store
-          if (sessionStore && sessionId) {
-            try {
-              sessionStore.appendMessage(sessionId, 'assistant', assistantMsg);
-            } catch (err) {
-              console.error('[runtime] Failed to persist assistant message:', err);
-            }
-          }
-          currentAssistantMessageId = null;
-          currentThinkingId = null;
-        }
-        // Tool result messages are no longer forwarded as chat messages;
-        // they appear in the ToolCardEntry via tool_execution_end instead.
-        break;
-      }
-
-      case 'tool_execution_start':
-        toolStartTimes.set(event.toolCallId, Date.now());
-        toolStartArgs.set(event.toolCallId, event.args as Record<string, unknown>);
-        onEvent({
-          type: 'tool-execution',
-          toolExecution: {
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            status: 'running',
-            args: event.args as Record<string, unknown>,
-          },
-        });
-        eventBus?.emit(AgentEvents.TOOL_START, {
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          args: event.args,
-        });
-        break;
-
-      case 'tool_execution_end': {
-        const result = event.result as PiAgentToolResult | undefined;
-        const resultContent = result?.content;
-        const resultText = resultContent
-          ?.filter((c): c is Extract<typeof c, { type: 'text' }> => c.type === 'text')
-          ?.map((c) => c.text)
-          ?.join('') ?? '';
-        const startTime = toolStartTimes.get(event.toolCallId);
-        const duration = startTime ? Date.now() - startTime : undefined;
-        const toolArgs = toolStartArgs.get(event.toolCallId);
-        toolStartTimes.delete(event.toolCallId);
-        toolStartArgs.delete(event.toolCallId);
-        onEvent({
-          type: 'tool-execution',
-          toolExecution: {
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            status: event.isError ? 'error' : 'done',
-            result: resultText,
-            duration,
-          },
-        });
-
-        // Record tool execution outcome to experience log
-        recordExperience({
-          ts: new Date().toISOString(),
-          tool: event.toolName,
-          ok: !event.isError,
-          ms: duration ?? 0,
-          ...(event.isError && resultText ? { err: resultText } : {}),
-          ...(event.isError && toolArgs ? { args: toolArgs } : {}),
-        });
-
-        eventBus?.emit(AgentEvents.TOOL_END, {
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          isError: event.isError,
-          result: resultText,
-          duration,
-        });
-        break;
-      }
-
-      case 'tool_execution_update': {
-        // Forward partial result updates
-        const partial = (event as { partialResult?: unknown }).partialResult;
-        const partialStr = typeof partial === 'string' ? partial : JSON.stringify(partial);
-        onEvent({
-          type: 'tool-execution',
-          toolExecution: {
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            status: 'running',
-            partialResult: partialStr,
-          },
-        });
-        eventBus?.emit(AgentEvents.TOOL_UPDATE, {
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          partialResult: partialStr,
-        });
-        break;
-      }
-
-      case 'agent_end': {
-        eventBus?.emit(AgentEvents.AGENT_END, {
-          stopReason: event.messages.length > 0
-            ? ((event.messages[event.messages.length - 1] as PiAssistantMessage).stopReason ?? 'ok')
-            : 'ok',
-        });
-        const msgs = event.messages;
-        const lastMsg = msgs[msgs.length - 1];
-        // Capture the last assistant text for the prompt() return value
-        if (lastMsg && lastMsg.role === 'assistant') {
-          lastAssistantText = getAssistantText((lastMsg as PiAssistantMessage).content);
-        }
-        if (lastMsg && 'stopReason' in lastMsg) {
-          const stopReason = (lastMsg as PiAssistantMessage).stopReason;
-          if (stopReason === 'error' || stopReason === 'aborted') {
-            onEvent({ type: 'state-change', state: AgentState.FAILED });
-            setTimeout(() => {
-              onEvent({ type: 'state-change', state: AgentState.IDLE });
-            }, 2000);
-          } else {
-            onEvent({ type: 'state-change', state: AgentState.SUCCESS });
-            setTimeout(() => {
-              onEvent({ type: 'state-change', state: AgentState.IDLE });
-            }, 2000);
-          }
-        } else {
-          // No messages or last message is not an assistant message; treat as success
-          onEvent({ type: 'state-change', state: AgentState.SUCCESS });
-          setTimeout(() => {
-            onEvent({ type: 'state-change', state: AgentState.IDLE });
-          }, 2000);
-        }
-        break;
-      }
-
-      case 'turn_start':
-        turnCounter++;
-        onEvent({
-          type: 'turn-indicator',
-          turnIndicator: { turn: turnCounter, event: 'start' },
-        });
-        eventBus?.emit(AgentEvents.STATE_CHANGE, { turn: turnCounter, event: 'turn_start' });
-        break;
-
-      case 'turn_end':
-        onEvent({
-          type: 'turn-indicator',
-          turnIndicator: { turn: turnCounter, event: 'end' },
-        });
-        eventBus?.emit(AgentEvents.STATE_CHANGE, { turn: turnCounter, event: 'turn_end' });
-        break;
-
-      default:
-        break;
-    }
+  // Subscribe to backend events and forward to renderer / EventBus / etc.
+  backend.subscribe((event: BackendEvent) => {
+    handleBackendEvent(event, onEvent, eventBus, sessionStore, sessionId, toolStartTimes, toolStartArgs, (turn: number) => {
+      turnCounter = turn;
+    }, () => turnCounter);
   });
 
   // Restore persisted scheduled tasks and wire up the fire callback
   setScheduleFireCallback((promptText: string) => {
-    // Send the prompt to the agent as if the user typed it
-    agent.prompt(promptText).catch((err: unknown) => {
+    backend.prompt(promptText).catch((err: unknown) => {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error(`Scheduled task prompt failed: ${errorMessage}`);
     });
@@ -519,7 +225,6 @@ export async function createAgentRuntime(
 
   return {
     async prompt(text: string): Promise<string> {
-      lastAssistantText = '';
       // Persist user message before sending to agent
       if (sessionStore && sessionId) {
         try {
@@ -531,12 +236,12 @@ export async function createAgentRuntime(
           console.error('[runtime] Failed to persist user message:', err);
         }
       }
-      await agent.prompt(text);
-      return lastAssistantText;
+      const result = await backend.prompt(text);
+      return result;
     },
 
     abort(): void {
-      agent.abort();
+      backend.abort();
     },
 
     setConfirmationHandler(handler: ConfirmationHandler): void {
@@ -544,8 +249,242 @@ export async function createAgentRuntime(
     },
 
     dispose(): void {
-      agent.abort();
-      agent.reset();
+      backend.dispose();
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Backend event handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle a unified BackendEvent, forwarding to renderer, EventBus, etc.
+ *
+ * This is the shared event handling logic that was previously inline in
+ * the pi-agent-core event subscription. Now it operates on the engine-
+ * agnostic BackendEvent format.
+ */
+function handleBackendEvent(
+  event: BackendEvent,
+  onEvent: AgentEventCallback,
+  eventBus: EventBus | undefined,
+  sessionStore: SessionStore | undefined,
+  sessionId: string | undefined,
+  toolStartTimes: Map<string, number>,
+  toolStartArgs: Map<string, Record<string, unknown>>,
+  setTurnCounter: (turn: number) => void,
+  getTurnCounter: () => number,
+): void {
+  switch (event.type) {
+    case BackendEventType.START:
+      onEvent({ type: 'state-change', state: AgentState.GREETING });
+      eventBus?.emit(AgentEvents.AGENT_START);
+      break;
+
+    case BackendEventType.MESSAGE_START:
+      onEvent({
+        type: 'chat-message',
+        chatMessage: {
+          id: event.id,
+          role: event.role,
+          content: event.text,
+          streaming: true,
+        },
+      });
+      eventBus?.emit(AgentEvents.MESSAGE_START, { id: event.id, role: event.role, text: event.text });
+      break;
+
+    case BackendEventType.MESSAGE_DELTA:
+      onEvent({
+        type: 'chat-message-update',
+        chatDelta: {
+          id: event.id,
+          delta: event.delta,
+        },
+      });
+      eventBus?.emit(AgentEvents.MESSAGE_DELTA, { id: event.id, delta: event.delta });
+      break;
+
+    case BackendEventType.THINKING_DELTA:
+      onEvent({
+        type: 'chat-thinking',
+        chatThinking: {
+          id: event.id,
+          delta: event.delta,
+        },
+      });
+      // Thinking deltas are not emitted to EventBus currently
+      break;
+
+    case BackendEventType.MESSAGE_END:
+      if (event.hasToolCalls) {
+        onEvent({
+          type: 'chat-message-end',
+          chatEnd: { id: event.id },
+        });
+        onEvent({
+          type: 'state-change',
+          state: AgentState.EXECUTING,
+        });
+      } else {
+        onEvent({
+          type: 'chat-message-end',
+          chatEnd: { id: event.id },
+        });
+      }
+      eventBus?.emit(AgentEvents.MESSAGE_END, {
+        id: event.id,
+        role: event.role,
+        content: event.text,
+        hasToolCalls: event.hasToolCalls,
+      });
+      // Persist assistant message to session store
+      if (sessionStore && sessionId) {
+        try {
+          sessionStore.appendMessage(sessionId, 'assistant', event.rawMessage);
+        } catch (err) {
+          console.error('[runtime] Failed to persist assistant message:', err);
+        }
+      }
+      break;
+
+    case BackendEventType.TOOL_START:
+      toolStartTimes.set(event.toolCallId, Date.now());
+      toolStartArgs.set(event.toolCallId, event.args);
+      onEvent({
+        type: 'tool-execution',
+        toolExecution: {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          status: 'running',
+          args: event.args,
+        },
+      });
+      eventBus?.emit(AgentEvents.TOOL_START, {
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        args: event.args,
+      });
+      break;
+
+    case BackendEventType.TOOL_UPDATE:
+      onEvent({
+        type: 'tool-execution',
+        toolExecution: {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          status: 'running',
+          partialResult: event.partialResult,
+        },
+      });
+      eventBus?.emit(AgentEvents.TOOL_UPDATE, {
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        partialResult: event.partialResult,
+      });
+      break;
+
+    case BackendEventType.TOOL_END: {
+      const startTime = toolStartTimes.get(event.toolCallId);
+      const duration = event.duration ?? (startTime ? Date.now() - startTime : undefined);
+      const toolArgs = event.args ?? toolStartArgs.get(event.toolCallId);
+      toolStartTimes.delete(event.toolCallId);
+      toolStartArgs.delete(event.toolCallId);
+      onEvent({
+        type: 'tool-execution',
+        toolExecution: {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          status: event.isError ? 'error' : 'done',
+          result: event.resultText,
+          duration,
+        },
+      });
+
+      // Record tool execution outcome to experience log
+      recordExperience({
+        ts: new Date().toISOString(),
+        tool: event.toolName,
+        ok: !event.isError,
+        ms: duration ?? 0,
+        ...(event.isError && event.resultText ? { err: event.resultText } : {}),
+        ...(event.isError && toolArgs ? { args: toolArgs } : {}),
+      });
+
+      eventBus?.emit(AgentEvents.TOOL_END, {
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        isError: event.isError,
+        result: event.resultText,
+        duration,
+      });
+      break;
+    }
+
+    case BackendEventType.END:
+      eventBus?.emit(AgentEvents.AGENT_END, {
+        stopReason: event.stopReason,
+      });
+      if (event.stopReason === 'error' || event.stopReason === 'aborted') {
+        onEvent({ type: 'state-change', state: AgentState.FAILED });
+        setTimeout(() => {
+          onEvent({ type: 'state-change', state: AgentState.IDLE });
+        }, 2000);
+      } else {
+        onEvent({ type: 'state-change', state: AgentState.SUCCESS });
+        setTimeout(() => {
+          onEvent({ type: 'state-change', state: AgentState.IDLE });
+        }, 2000);
+      }
+      break;
+
+    case BackendEventType.TURN_START: {
+      const turn = getTurnCounter() + 1;
+      setTurnCounter(turn);
+      onEvent({
+        type: 'turn-indicator',
+        turnIndicator: { turn, event: 'start' },
+      });
+      eventBus?.emit(AgentEvents.STATE_CHANGE, { turn, event: 'turn_start' });
+      break;
+    }
+
+    case BackendEventType.TURN_END: {
+      const turn = getTurnCounter();
+      onEvent({
+        type: 'turn-indicator',
+        turnIndicator: { turn, event: 'end' },
+      });
+      eventBus?.emit(AgentEvents.STATE_CHANGE, { turn, event: 'turn_end' });
+      break;
+    }
+
+    case BackendEventType.ERROR:
+      console.error(`[runtime] Backend error: ${event.error}`);
+      break;
+
+    default:
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Load the streamSimple function from pi-ai for use in BackendConfig.
+ * Caches the module so repeated calls do not re-import.
+ */
+let cachedStreamFn: unknown | null = null;
+
+async function loadStreamFn(): Promise<unknown> {
+  if (cachedStreamFn !== null) return cachedStreamFn;
+  const dynamicImport = new Function('modulePath', 'return import(modulePath)') as <T>(
+    modulePath: string
+  ) => Promise<T>;
+  const ai = await dynamicImport<typeof import('@earendil-works/pi-ai')>('@earendil-works/pi-ai');
+  cachedStreamFn = ai.streamSimple;
+  return cachedStreamFn;
 }
