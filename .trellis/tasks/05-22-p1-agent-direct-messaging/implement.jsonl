@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions and architecture context (AgentBackend, TaskScheduler)"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "File placement conventions"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "TypeScript quality and coding standards"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling for messaging edge cases"}
+{"file": ".trellis/tasks/05-22-p1-agent-direct-messaging/prd.md", "reason": "Requirements: AgentChannel, EventBus routing, inbox, send_message/check_inbox tools"}
