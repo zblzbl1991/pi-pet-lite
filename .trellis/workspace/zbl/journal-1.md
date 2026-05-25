@@ -430,3 +430,45 @@ Integrate A2A remote agent support with pet team management; add hot-reload Chie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: P1 + P2.1-P2.2: Agent Runtime 全部 P1 + Plugin + Session
+
+**Date**: 2026-05-25
+**Task**: P1 + P2.1-P2.2: Agent Runtime 全部 P1 + Plugin + Session
+**Branch**: `master`
+
+### Summary
+
+完成 P1 三任务(P1.1 AgentBackend、P1.2 TaskScheduler、P1.3 Messaging)和 P2 前两任务(P2.1 Plugin/Tool API 含 Settings UI、P2.2 Session Branching+Checkpoint+Export)。本 session 共交付 5 个任务，新增约 4600 行代码。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `320873d` | (see git log) |
+| `d148ecb` | (see git log) |
+| `9257810` | (see git log) |
+| `aee31ea` | (see git log) |
+| `fef16b0` | (see git log) |
+| `ab4738b` | (see git log) |
+| `c7dcb21` | (see git log) |
+| `ef7a963` | (see git log) |
+| `f5cb5a5` | (see git log) |
+| `b1a0910` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
