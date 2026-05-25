@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions and AgentBackend architecture context"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "File placement conventions for new scheduler module"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "TypeScript quality and coding standards"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling patterns for scheduler edge cases"}
+{"file": ".trellis/tasks/05-22-p1-task-scheduler-upgrade/prd.md", "reason": "Requirements: priority scheduling, task dependencies, Blackboard watchers"}
