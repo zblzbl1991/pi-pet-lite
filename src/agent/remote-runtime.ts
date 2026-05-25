@@ -140,6 +140,11 @@ export async function createRemoteAgentRuntime(
       // No-op: remote agents don't need local tool confirmation
     },
 
+    createCheckpoint(_label?: string): string {
+      // No-op: remote agents don't support local checkpointing
+      throw new Error('Checkpoint not supported for remote agents');
+    },
+
     dispose(): void {
       currentAbortController?.abort();
       currentAbortController = null;

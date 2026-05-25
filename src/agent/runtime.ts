@@ -89,6 +89,8 @@ export interface AgentRuntime {
   abort(): void;
   /** Set the handler for confirmation requests from the renderer */
   setConfirmationHandler(handler: ConfirmationHandler): void;
+  /** Create a checkpoint of the current session state */
+  createCheckpoint(label?: string): string;
   /** Clean up the agent */
   dispose(): void;
 }
@@ -281,6 +283,13 @@ export async function createAgentRuntime(
 
     setConfirmationHandler(handler: ConfirmationHandler): void {
       confirmationHandler = handler;
+    },
+
+    createCheckpoint(label?: string): string {
+      if (!sessionStore || !sessionId) {
+        throw new Error('No session store available for checkpointing');
+      }
+      return sessionStore.createCheckpoint(sessionId, label);
     },
 
     dispose(): void {

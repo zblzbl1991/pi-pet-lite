@@ -398,6 +398,59 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
       break;
     }
 
+    case 'session-branch': {
+      handleSessionBranch(msg.petId, msg.branchPointSeq);
+      break;
+    }
+
+    case 'session-create-checkpoint': {
+      handleSessionCreateCheckpoint(msg.petId, msg.label);
+      break;
+    }
+
+    case 'session-restore-checkpoint': {
+      handleSessionRestoreCheckpoint(msg.petId, msg.checkpointId).catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error('[agent-process] session-restore-checkpoint error:', errMsg);
+      });
+      break;
+    }
+
+    case 'session-list-checkpoints': {
+      handleSessionListCheckpoints(msg.petId);
+      break;
+    }
+
+    case 'session-delete-checkpoint': {
+      handleSessionDeleteCheckpoint(msg.checkpointId);
+      break;
+    }
+
+    case 'session-export': {
+      handleSessionExport(msg.petId, msg.includeCheckpoints);
+      break;
+    }
+
+    case 'session-export-range': {
+      handleSessionExportRange(msg.petId, msg.fromSeq, msg.toSeq);
+      break;
+    }
+
+    case 'session-import': {
+      handleSessionImport(msg.petId, msg.data);
+      break;
+    }
+
+    case 'session-list-branches': {
+      handleSessionListBranches(msg.petId);
+      break;
+    }
+
+    case 'session-get-tree': {
+      handleSessionGetTree(msg.petId);
+      break;
+    }
+
     default: {
       const _exhaustive: never = msg;
       console.warn('Unknown message type from renderer:', (msg as Record<string, unknown>).type);
@@ -554,6 +607,149 @@ function handleProfilesUpdated(): void {
   // Chief is idle — dispose now, next user message triggers ensure() with fresh config
   petManager.dispose(chiefId);
   chiefNeedsRebuild = false;
+}
+
+// ---------------------------------------------------------------------------
+// Session branching / checkpoint / export handlers
+// ---------------------------------------------------------------------------
+
+function handleSessionBranch(petId: string, branchPointSeq: number): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-branch-response', success: false, error: 'PetManager not initialized' });
+    return;
+  }
+
+  try {
+    const newSessionId = petManager.branchSession(petId, branchPointSeq);
+    if (newSessionId) {
+      sendToRenderer({ type: 'session-branch-response', success: true, sessionId: newSessionId });
+    } else {
+      sendToRenderer({ type: 'session-branch-response', success: false, error: 'No active session found' });
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'session-branch-response', success: false, error: msg });
+  }
+}
+
+function handleSessionCreateCheckpoint(petId: string, label?: string): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-checkpoint-response', success: false, error: 'PetManager not initialized' });
+    return;
+  }
+
+  try {
+    const checkpointId = petManager.createCheckpoint(petId, label);
+    if (checkpointId) {
+      sendToRenderer({ type: 'session-checkpoint-response', success: true, checkpointId });
+    } else {
+      sendToRenderer({ type: 'session-checkpoint-response', success: false, error: 'No active session found' });
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'session-checkpoint-response', success: false, error: msg });
+  }
+}
+
+async function handleSessionRestoreCheckpoint(petId: string, checkpointId: string): Promise<void> {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-restore-checkpoint-response', success: false, error: 'PetManager not initialized' });
+    return;
+  }
+
+  try {
+    const newSessionId = await petManager.restoreCheckpoint(petId, checkpointId);
+    if (newSessionId) {
+      sendToRenderer({ type: 'session-restore-checkpoint-response', success: true, sessionId: newSessionId });
+    } else {
+      sendToRenderer({ type: 'session-restore-checkpoint-response', success: false, error: 'Restore failed' });
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'session-restore-checkpoint-response', success: false, error: msg });
+  }
+}
+
+function handleSessionListCheckpoints(petId: string): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-checkpoints-list', checkpoints: [] });
+    return;
+  }
+
+  const checkpoints = petManager.getCheckpoints(petId);
+  sendToRenderer({ type: 'session-checkpoints-list', checkpoints });
+}
+
+function handleSessionDeleteCheckpoint(checkpointId: string): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-delete-checkpoint-response', success: false, error: 'PetManager not initialized' });
+    return;
+  }
+
+  const success = petManager.deleteCheckpoint(checkpointId);
+  sendToRenderer({ type: 'session-delete-checkpoint-response', success });
+}
+
+function handleSessionExport(petId: string, includeCheckpoints?: boolean): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-export-response', data: null, error: 'PetManager not initialized' });
+    return;
+  }
+
+  const data = petManager.exportSession(petId, { includeCheckpoints });
+  if (data) {
+    sendToRenderer({ type: 'session-export-response', data });
+  } else {
+    sendToRenderer({ type: 'session-export-response', data: null, error: 'No active session found' });
+  }
+}
+
+function handleSessionExportRange(petId: string, fromSeq: number, toSeq: number): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-export-response', data: null, error: 'PetManager not initialized' });
+    return;
+  }
+
+  const data = petManager.exportSessionRange(petId, fromSeq, toSeq);
+  if (data) {
+    sendToRenderer({ type: 'session-export-response', data });
+  } else {
+    sendToRenderer({ type: 'session-export-response', data: null, error: 'No active session found' });
+  }
+}
+
+function handleSessionImport(petId: string, data: import('../shared/types').ExportedSession): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-import-response', success: false, error: 'PetManager not initialized' });
+    return;
+  }
+
+  const sessionId = petManager.importSession(petId, data);
+  if (sessionId) {
+    sendToRenderer({ type: 'session-import-response', success: true, sessionId });
+  } else {
+    sendToRenderer({ type: 'session-import-response', success: false, error: 'Import failed' });
+  }
+}
+
+function handleSessionListBranches(petId: string): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-branches-list', branches: [] });
+    return;
+  }
+
+  const branches = petManager.getSessionBranches(petId);
+  sendToRenderer({ type: 'session-branches-list', branches });
+}
+
+function handleSessionGetTree(petId: string): void {
+  if (!petManager) {
+    sendToRenderer({ type: 'session-tree', tree: [] });
+    return;
+  }
+
+  const tree = petManager.getSessionTree(petId);
+  sendToRenderer({ type: 'session-tree', tree });
 }
 
 /**

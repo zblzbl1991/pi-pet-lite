@@ -146,4 +146,42 @@ Renderer → Main (IPC) → Agent process (MessagePort) → Plugin loader. Plugi
 
 ---
 
+## Architecture: Session Branching & Checkpoint
+
+Conversations can branch, checkpoint, and be exported/imported across devices.
+
+### Schema (v2)
+
+```sql
+-- sessions table extended
+ALTER TABLE sessions ADD COLUMN parent_session_id TEXT;
+ALTER TABLE sessions ADD COLUMN branch_point_seq INTEGER;
+
+-- new table
+CREATE TABLE checkpoints (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES sessions(id),
+  label TEXT,
+  snapshot TEXT NOT NULL,  -- JSON: full message history
+  created_at INTEGER NOT NULL
+);
+```
+
+Migration is idempotent (checks column existence before ALTER).
+
+### Key concepts
+
+- **Branch**: copy-on-write — copies messages up to branch point into new session, sets parent reference
+- **Checkpoint**: full message snapshot stored as JSON; restore creates new session from snapshot
+- **Export/Import**: self-contained JSON with metadata + messages + optional checkpoints; no absolute paths
+- **Source session is never modified** by branching or checkpointing
+
+### Integration points
+
+- `SessionStore.branchFromSession()`, `createCheckpoint()`, `exportSession()`, `importSession()`
+- `PetManager` exposes these via IPC (renderer → main → agent process → SessionStore)
+- `AgentRuntime.createCheckpoint()` delegates to SessionStore
+
+---
+
 **Language**: All documentation should be written in **English**.

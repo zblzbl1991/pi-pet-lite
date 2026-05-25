@@ -30,7 +30,7 @@ import {
   PET_MANAGER_IDLE_TIMEOUT_MINUTES,
   PET_MANAGER_MAX_QUEUE_DEPTH,
 } from '../shared/constants';
-import type { PetProfile, PetStatus, PetStatusReportMessage } from '../shared/types';
+import type { PetProfile, PetStatus, PetStatusReportMessage, ExportedSession, Checkpoint, SessionInfo, SessionTreeNode } from '../shared/types';
 import type { SessionStore } from '../storage/session-store';
 
 // ---------------------------------------------------------------------------
@@ -423,6 +423,179 @@ export class PetManager {
     for (const petId of allProfileIds) {
       this.emitStatusChange(petId, 'offline');
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session branching, checkpoint, export/import
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Branch the current session for a pet at a given message sequence number.
+   * Creates a new session with messages up to branchPointSeq.
+   *
+   * @param petId - The pet whose session to branch
+   * @param branchPointSeq - The sequence number to branch at
+   * @returns The new session ID, or null if no active session
+   */
+  branchSession(petId: string, branchPointSeq: number): string | null {
+    if (!this.sessionStore) return null;
+
+    const managed = this.agents.get(petId);
+    const sessionId = managed?.sessionId ?? this.sessionStore.getActiveSessionId(petId);
+    if (!sessionId) return null;
+
+    const newSessionId = this.sessionStore.branchFromSession(sessionId, branchPointSeq);
+    return newSessionId;
+  }
+
+  /**
+   * Create a checkpoint of the current session for a pet.
+   *
+   * @param petId - The pet whose session to checkpoint
+   * @param label - Optional human-readable label for the checkpoint
+   * @returns The checkpoint ID, or null if no active session
+   */
+  createCheckpoint(petId: string, label?: string): string | null {
+    if (!this.sessionStore) return null;
+
+    const managed = this.agents.get(petId);
+    if (managed) {
+      return managed.agent.createCheckpoint(label);
+    }
+
+    // Fallback: use session store directly
+    const sessionId = this.sessionStore.getActiveSessionId(petId);
+    if (!sessionId) return null;
+
+    return this.sessionStore.createCheckpoint(sessionId, label);
+  }
+
+  /**
+   * List checkpoints for a pet's current session.
+   */
+  getCheckpoints(petId: string): Checkpoint[] {
+    if (!this.sessionStore) return [];
+
+    const managed = this.agents.get(petId);
+    const sessionId = managed?.sessionId ?? this.sessionStore.getActiveSessionId(petId);
+    if (!sessionId) return [];
+
+    return this.sessionStore.getCheckpoints(sessionId);
+  }
+
+  /**
+   * Restore from a checkpoint: creates a new session and re-creates the agent.
+   *
+   * @param petId - The pet to restore
+   * @param checkpointId - The checkpoint to restore from
+   * @returns The new session ID
+   */
+  async restoreCheckpoint(petId: string, checkpointId: string): Promise<string | null> {
+    if (!this.sessionStore) return null;
+
+    try {
+      // Create new session from checkpoint
+      const newSessionId = this.sessionStore.restoreCheckpoint(checkpointId);
+
+      // Dispose the current agent (will be recreated with new session on next delegate)
+      this.dispose(petId);
+
+      return newSessionId;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[pet-mgr] Failed to restore checkpoint: ${msg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Delete a checkpoint by ID.
+   */
+  deleteCheckpoint(checkpointId: string): boolean {
+    if (!this.sessionStore) return false;
+    return this.sessionStore.deleteCheckpoint(checkpointId);
+  }
+
+  /**
+   * Export a pet's current session.
+   */
+  exportSession(petId: string, options?: { includeCheckpoints?: boolean }): ExportedSession | null {
+    if (!this.sessionStore) return null;
+
+    const managed = this.agents.get(petId);
+    const sessionId = managed?.sessionId ?? this.sessionStore.getActiveSessionId(petId);
+    if (!sessionId) return null;
+
+    try {
+      return this.sessionStore.exportSession(sessionId, options);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[pet-mgr] Failed to export session: ${msg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Export a range of messages from a pet's current session.
+   */
+  exportSessionRange(petId: string, fromSeq: number, toSeq: number): ExportedSession | null {
+    if (!this.sessionStore) return null;
+
+    const managed = this.agents.get(petId);
+    const sessionId = managed?.sessionId ?? this.sessionStore.getActiveSessionId(petId);
+    if (!sessionId) return null;
+
+    try {
+      return this.sessionStore.exportSessionRange(sessionId, fromSeq, toSeq);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[pet-mgr] Failed to export session range: ${msg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Import a session from exported data for a pet.
+   */
+  importSession(petId: string, data: ExportedSession): string | null {
+    if (!this.sessionStore) return null;
+
+    try {
+      return this.sessionStore.importSession(data, petId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[pet-mgr] Failed to import session: ${msg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all branches from a pet's current session.
+   */
+  getSessionBranches(petId: string): SessionInfo[] {
+    if (!this.sessionStore) return [];
+
+    const managed = this.agents.get(petId);
+    const sessionId = managed?.sessionId ?? this.sessionStore.getActiveSessionId(petId);
+    if (!sessionId) return [];
+
+    const branches = this.sessionStore.getBranches(sessionId);
+    return branches.map((s) => ({
+      id: s.id,
+      petId: s.petId,
+      title: s.title,
+      createdAt: s.createdAt,
+      parentSessionId: s.parentSessionId,
+      branchPointSeq: s.branchPointSeq,
+    }));
+  }
+
+  /**
+   * Get the session tree for a pet.
+   */
+  getSessionTree(petId: string): SessionTreeNode[] {
+    if (!this.sessionStore) return [];
+    return this.sessionStore.getSessionTree(petId);
   }
 
   // ---------------------------------------------------------------------------

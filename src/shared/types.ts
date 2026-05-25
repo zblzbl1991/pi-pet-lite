@@ -222,7 +222,17 @@ export type RendererToAgentMessage =
   | { type: 'plugin-enable'; name: string }
   | { type: 'plugin-disable'; name: string }
   | { type: 'plugin-install'; sourcePath: string }
-  | { type: 'plugin-uninstall'; name: string };
+  | { type: 'plugin-uninstall'; name: string }
+  | { type: 'session-branch'; petId: string; branchPointSeq: number }
+  | { type: 'session-create-checkpoint'; petId: string; label?: string }
+  | { type: 'session-restore-checkpoint'; petId: string; checkpointId: string }
+  | { type: 'session-list-checkpoints'; petId: string }
+  | { type: 'session-delete-checkpoint'; checkpointId: string }
+  | { type: 'session-export'; petId: string; includeCheckpoints?: boolean }
+  | { type: 'session-export-range'; petId: string; fromSeq: number; toSeq: number }
+  | { type: 'session-import'; petId: string; data: ExportedSession }
+  | { type: 'session-list-branches'; petId: string }
+  | { type: 'session-get-tree'; petId: string };
 
 /** Messages sent from agent to renderer via MessagePort */
 export type AgentToRendererMessage =
@@ -242,7 +252,16 @@ export type AgentToRendererMessage =
   | { type: 'plugin-enable-response'; name: string; success: boolean; error?: string }
   | { type: 'plugin-disable-response'; name: string; success: boolean; error?: string }
   | { type: 'plugin-install-response'; success: boolean; name?: string; error?: string }
-  | { type: 'plugin-uninstall-response'; name: string; success: boolean; error?: string };
+  | { type: 'plugin-uninstall-response'; name: string; success: boolean; error?: string }
+  | { type: 'session-branch-response'; success: boolean; sessionId?: string; error?: string }
+  | { type: 'session-checkpoint-response'; success: boolean; checkpointId?: string; error?: string }
+  | { type: 'session-restore-checkpoint-response'; success: boolean; sessionId?: string; error?: string }
+  | { type: 'session-checkpoints-list'; checkpoints: Checkpoint[] }
+  | { type: 'session-delete-checkpoint-response'; success: boolean; error?: string }
+  | { type: 'session-export-response'; data: ExportedSession | null; error?: string }
+  | { type: 'session-import-response'; success: boolean; sessionId?: string; error?: string }
+  | { type: 'session-branches-list'; branches: SessionInfo[] }
+  | { type: 'session-tree'; tree: SessionTreeNode[] };
 
 /** Pet status report for IPC communication */
 export interface PetStatusReportMessage {
@@ -351,4 +370,38 @@ export interface PluginSummary {
   author: string;
   enabled: boolean;
   permissions: string[];
+}
+
+// ---- Session Branching & Checkpoint Types ----
+
+/** A checkpoint snapshot of agent state at a point in time */
+export interface Checkpoint {
+  id: string;
+  sessionId: string;
+  label: string | null;
+  createdAt: number;
+}
+
+/** A node in the session branch tree (for UI display) */
+export interface SessionTreeNode {
+  session: SessionInfo;
+  children: SessionTreeNode[];
+}
+
+/** Lightweight session info used in tree nodes and export */
+export interface SessionInfo {
+  id: string;
+  petId: string;
+  title: string | null;
+  createdAt: number;
+  parentSessionId: string | null;
+  branchPointSeq: number | null;
+}
+
+/** Exported session data for cross-device migration */
+export interface ExportedSession {
+  version: number;
+  session: { petId: string; title: string | null; createdAt: number };
+  messages: Array<{ seq: number; role: string; content: string }>;
+  checkpoints?: Array<{ id: string; label: string | null; snapshot: string; createdAt: number }>;
 }

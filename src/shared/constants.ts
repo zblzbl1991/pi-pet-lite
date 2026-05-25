@@ -261,3 +261,15 @@ export const IPC_PLUGIN_ENABLE = 'plugin:enable';
 export const IPC_PLUGIN_DISABLE = 'plugin:disable';
 export const IPC_PLUGIN_INSTALL = 'plugin:install';
 export const IPC_PLUGIN_UNINSTALL = 'plugin:uninstall';
+
+/** IPC channels for session branching/checkpoint/export operations */
+export const IPC_SESSION_BRANCH = 'session:branch';
+export const IPC_SESSION_CHECKPOINT = 'session:checkpoint';
+export const IPC_SESSION_RESTORE_CHECKPOINT = 'session:restore-checkpoint';
+export const IPC_SESSION_LIST_CHECKPOINTS = 'session:list-checkpoints';
+export const IPC_SESSION_DELETE_CHECKPOINT = 'session:delete-checkpoint';
+export const IPC_SESSION_EXPORT = 'session:export';
+export const IPC_SESSION_EXPORT_RANGE = 'session:export-range';
+export const IPC_SESSION_IMPORT = 'session:import';
+export const IPC_SESSION_LIST_BRANCHES = 'session:list-branches';
+export const IPC_SESSION_GET_TREE = 'session:get-tree';
