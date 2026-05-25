@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend architecture context (AgentBackend, TaskScheduler, messaging)"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "File placement for new plugins/ directory"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "TypeScript quality and coding standards"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling for plugin loading and execution"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Frontend component patterns for Settings Plugins page"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Frontend file placement for new settings page"}
+{"file": ".trellis/tasks/05-22-p2-plugin-tool-api/prd.md", "reason": "Requirements: ToolPlugin interface, loader, sandbox, Settings UI"}
