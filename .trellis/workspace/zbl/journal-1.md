@@ -282,3 +282,37 @@ Integrate A2A remote agent support with pet team management; add hot-reload Chie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: P1.1 Agent Backend 抽象层
+
+**Date**: 2026-05-25
+**Task**: P1.1 Agent Backend 抽象层
+**Branch**: `master`
+
+### Summary
+
+实现 AgentBackend 接口抽象层，将 runtime.ts 对 pi-agent-core 的直接依赖解耦。新增 backends/ 目录（types.ts、pi-agent-backend.ts、factory.ts），重构 runtime.ts 为薄包装层。TypeScript 编译通过，spec 已更新。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `320873d` | (see git log) |
+| `d148ecb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
