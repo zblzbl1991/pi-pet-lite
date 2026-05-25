@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify backend conventions compliance"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Check quality and TypeScript standards"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error handling patterns"}
+{"file": ".trellis/tasks/05-22-p1-agent-backend-abstraction/prd.md", "reason": "Check all R1-R5 requirements are met"}

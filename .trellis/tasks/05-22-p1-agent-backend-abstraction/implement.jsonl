@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend conventions and coding standards for agent layer"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Where to place new backends/ directory and files"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error patterns for backend implementations"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality and TypeScript standards for the abstraction layer"}
+{"file": ".trellis/tasks/05-22-p1-agent-backend-abstraction/prd.md", "reason": "Requirements: AgentBackend interface, PiAgentBackend impl, factory, integration"}
