@@ -14,8 +14,8 @@
  */
 
 // Re-export the restore function so the runtime can call it on startup
-export { restoreSchedules, setScheduleFireCallback } from './scheduler';
-export type { ScheduleFireCallback } from './scheduler';
+export { restoreSchedules, setScheduleFireCallback, setScheduleFireWithPriorityCallback } from './scheduler';
+export type { ScheduleFireCallback, ScheduleFireWithPriorityCallback } from './scheduler';
 
 /** Cached pi-coding-agent tools module */
 let piToolsModule: typeof import('@earendil-works/pi-coding-agent') | null = null;

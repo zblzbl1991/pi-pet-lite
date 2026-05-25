@@ -74,4 +74,24 @@ PetManager → createAgentRuntime() → createBackend(factory) → AgentBackend 
 
 ---
 
+## Architecture: TaskScheduler
+
+Per-pet priority-based task scheduler replacing the original FIFO `TaskQueue`.
+
+### Key concepts
+
+- **Priority levels** (const object, NOT enum): `critical` (0) > `user` (1) > `scheduled` (2) > `background` (3)
+- **No preemption** (D1): high-priority tasks go to queue head; current task finishes first
+- **Task dependencies**: `dependsOn: string[]` referencing task IDs; `dependencyPolicy: 'skip' | 'retry'`; timeout-based auto-resolution
+- **Blackboard watchers**: `watchBlackboard(ns, key, handler)` triggers task creation on key changes
+
+### Integration points
+
+- `PetManager.delegate()` → `TaskPriority.user` (backward compat)
+- `PetManager.delegateWithPriority()` → explicit priority
+- `agent-process.ts` routes user input as `critical`, cron as `scheduled`
+- `BlackboardStore.watchKey()` provides the watcher mechanism (cross-process wiring is a future integration point)
+
+---
+
 **Language**: All documentation should be written in **English**.

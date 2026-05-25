@@ -96,7 +96,11 @@ const activeCrons = new Map<string, cron.ScheduledTask>();
 /** Callback type for when a scheduled task fires */
 export type ScheduleFireCallback = (prompt: string) => void;
 
+/** Callback type for scheduled tasks using priority-aware delegation */
+export type ScheduleFireWithPriorityCallback = (prompt: string) => void;
+
 let scheduleFireCallback: ScheduleFireCallback | null = null;
+let scheduleFireWithPriorityCallback: ScheduleFireWithPriorityCallback | null = null;
 
 /**
  * Set the callback that fires when a scheduled task triggers.
@@ -104,6 +108,15 @@ let scheduleFireCallback: ScheduleFireCallback | null = null;
  */
 export function setScheduleFireCallback(cb: ScheduleFireCallback): void {
   scheduleFireCallback = cb;
+}
+
+/**
+ * Set the priority-aware callback that fires when a scheduled task triggers.
+ * Used by PetManager to enqueue with `scheduled` priority.
+ * Takes precedence over the legacy callback if set.
+ */
+export function setScheduleFireWithPriorityCallback(cb: ScheduleFireWithPriorityCallback): void {
+  scheduleFireWithPriorityCallback = cb;
 }
 
 /**
@@ -124,7 +137,10 @@ function startCron(schedule: ScheduledTask): void {
   }
 
   const task = cron.schedule(schedule.cron, () => {
-    if (scheduleFireCallback) {
+    // Prefer priority-aware callback (routed through TaskScheduler)
+    if (scheduleFireWithPriorityCallback) {
+      scheduleFireWithPriorityCallback(schedule.prompt);
+    } else if (scheduleFireCallback) {
       scheduleFireCallback(schedule.prompt);
     }
   });

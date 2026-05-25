@@ -6,7 +6,7 @@
  * - On-demand agent creation from PetProfile
  * - Idle reaping: agents unused for N minutes are disposed
  * - Max concurrent limit (default 3 active agents)
- * - Per-pet FIFO task queues (max depth 5)
+ * - Per-pet priority task queues with dependency support
  * - Health tracking per pet (success/error counts, latency)
  * - Abort capability per pet
  * - Status reporting via callback
@@ -18,7 +18,8 @@
 
 import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
 import { createRemoteAgentRuntime } from './remote-runtime';
-import { TaskQueue, TaskResult } from './task-queue';
+import { TaskResult } from './task-queue';
+import { TaskScheduler, TaskPriority, ScheduledTask } from './task-scheduler';
 import { getProfileById, getProfileByRole, getDefaultProfile, getProfileIds } from './profiles';
 import {
   PET_MANAGER_MAX_CONCURRENT,
@@ -91,7 +92,7 @@ const DEFAULT_CONFIG: PetManagerConfig = {
  */
 export class PetManager {
   private agents: Map<string, ManagedPet> = new Map();
-  private taskQueues: Map<string, TaskQueue> = new Map();
+  private taskSchedulers: Map<string, TaskScheduler> = new Map();
   private timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private readonly config: PetManagerConfig;
   private readonly onStatusChange: StatusChangeCallback | null;
@@ -100,6 +101,7 @@ export class PetManager {
   private reaperInterval: ReturnType<typeof setInterval> | null = null;
   private readonly eventBus: EventBus | null;
   private readonly sessionStore: SessionStore | null;
+  private taskCounter = 0;
 
   /**
    * @param onEvent - Callback for agent events forwarded to the renderer
@@ -149,32 +151,65 @@ export class PetManager {
   /**
    * Send a task to a pet's agent. Creates the agent on-demand if needed.
    *
-   * If the pet is busy, the task is queued (FIFO, max depth 5).
+   * If the pet is busy, the task is queued (priority-based, max depth 5).
    * If the max concurrent limit is reached, the least recently used
    * idle agent is disposed to make room.
+   *
+   * Default priority is `user`.
    *
    * @param petId - The target pet's profile id
    * @param prompt - The task prompt text
    * @returns Promise resolving to the task result
    */
   async delegate(petIdOrRole: string, prompt: string): Promise<TaskResult> {
+    return this.delegateWithPriority(petIdOrRole, prompt, TaskPriority.user);
+  }
+
+  /**
+   * Send a task to a pet's agent with explicit priority.
+   *
+   * @param petIdOrRole - The target pet's profile id or role
+   * @param prompt - The task prompt text
+   * @param priority - Task priority (critical, user, scheduled, background)
+   * @param options - Optional scheduling options (dependencies, timeout, etc.)
+   * @returns Promise resolving to the task result
+   */
+  async delegateWithPriority(
+    petIdOrRole: string,
+    prompt: string,
+    priority: TaskPriority = TaskPriority.user,
+    options?: { dependsOn?: string[]; dependencyPolicy?: 'skip' | 'retry'; timeout?: number; metadata?: Record<string, unknown> }
+  ): Promise<TaskResult> {
     // Resolve by id first, then by role (for cases like "remote" where id is "remote-1234")
     const profile = getProfileById(petIdOrRole) ?? getProfileByRole(petIdOrRole) ?? getDefaultProfile();
     const actualPetId = profile.id;
-    console.log(`[pet-mgr] delegate(${petIdOrRole}) resolved to petId=${actualPetId}, role=${profile.role}`);
+    console.log(`[pet-mgr] delegate(${petIdOrRole}) resolved to petId=${actualPetId}, role=${profile.role}, priority=${priority}`);
 
     // Ensure the agent exists
     await this.ensureAgent(actualPetId, profile);
 
-    // Get or create the task queue
-    let queue = this.taskQueues.get(actualPetId);
-    if (!queue) {
-      queue = new TaskQueue(this.config.maxQueueDepth);
-      this.taskQueues.set(actualPetId, queue);
+    // Get or create the task scheduler
+    let scheduler = this.taskSchedulers.get(actualPetId);
+    if (!scheduler) {
+      scheduler = new TaskScheduler(this.config.maxQueueDepth);
+      this.taskSchedulers.set(actualPetId, scheduler);
     }
 
+    // Build the scheduled task
+    const taskId = `task-${++this.taskCounter}-${Date.now()}`;
+    const task: ScheduledTask = {
+      id: taskId,
+      petId: actualPetId,
+      prompt,
+      priority,
+      dependsOn: options?.dependsOn,
+      dependencyPolicy: options?.dependencyPolicy,
+      timeout: options?.timeout,
+      metadata: options?.metadata,
+    };
+
     // Enqueue the task
-    const { task, promise } = queue.enqueue(prompt);
+    const handle = scheduler.enqueue(task);
 
     // If the agent is idle, start processing the queue
     const managed = this.agents.get(actualPetId);
@@ -186,7 +221,7 @@ export class PetManager {
       });
     }
 
-    return promise;
+    return handle.promise;
   }
 
   /**
@@ -216,11 +251,11 @@ export class PetManager {
     const allProfileIds = getProfileIds();
     return allProfileIds.map((petId) => {
       const managed = this.agents.get(petId);
-      const queue = this.taskQueues.get(petId);
+      const scheduler = this.taskSchedulers.get(petId);
       return {
         petId,
         status: managed?.status ?? 'offline',
-        queueLength: queue?.length ?? 0,
+        queueLength: scheduler?.totalCount ?? 0,
         successCount: managed?.successCount ?? 0,
         errorCount: managed?.errorCount ?? 0,
         lastActivity: managed?.lastActivity ?? 0,
@@ -256,10 +291,10 @@ export class PetManager {
       this.agents.delete(petId);
     }
 
-    const queue = this.taskQueues.get(petId);
-    if (queue) {
-      queue.clear('Pet agent disposed');
-      this.taskQueues.delete(petId);
+    const scheduler = this.taskSchedulers.get(petId);
+    if (scheduler) {
+      scheduler.clear('Pet agent disposed');
+      this.taskSchedulers.delete(petId);
     }
 
     this.clearTimer(petId);
@@ -282,10 +317,10 @@ export class PetManager {
     }
     this.agents.clear();
 
-    for (const [_petId, queue] of this.taskQueues) {
-      queue.clear('PetManager shutdown');
+    for (const [_petId, scheduler] of this.taskSchedulers) {
+      scheduler.clear('PetManager shutdown');
     }
-    this.taskQueues.clear();
+    this.taskSchedulers.clear();
 
     for (const [petId, _timer] of this.timers) {
       this.clearTimer(petId);
@@ -394,15 +429,15 @@ export class PetManager {
   }
 
   /**
-   * Process the task queue for a pet.
-   * Executes tasks sequentially (FIFO) until the queue is empty.
+   * Process the task scheduler for a pet.
+   * Executes tasks by priority until no ready tasks remain.
    */
   private async processQueue(petId: string): Promise<void> {
     const managed = this.agents.get(petId);
     if (!managed) return;
 
-    const queue = this.taskQueues.get(petId);
-    if (!queue || queue.isEmpty) return;
+    const scheduler = this.taskSchedulers.get(petId);
+    if (!scheduler || scheduler.isEmpty) return;
 
     // Mark as executing
     managed.isExecuting = true;
@@ -410,8 +445,8 @@ export class PetManager {
     this.emitStatusChange(petId, 'busy');
 
     try {
-      while (!queue.isEmpty) {
-        const task = queue.dequeue();
+      while (!scheduler.isEmpty) {
+        const task = scheduler.dequeue();
         if (!task) break;
 
         const startTime = Date.now();
@@ -426,7 +461,7 @@ export class PetManager {
           managed.successCount++;
           managed.lastActivity = Date.now();
 
-          task.resolve({
+          scheduler.complete(task.id, {
             success: true,
             output: agentOutput || 'Task completed successfully',
             durationMs,
@@ -437,7 +472,7 @@ export class PetManager {
           managed.errorCount++;
           managed.lastActivity = Date.now();
 
-          task.resolve({
+          scheduler.complete(task.id, {
             success: false,
             output: errorMessage,
             durationMs,

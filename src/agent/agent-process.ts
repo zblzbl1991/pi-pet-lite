@@ -19,6 +19,8 @@ import { AgentState, AgentToRendererMessage, RendererToAgentMessage, MessageRole
 import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
 import { PetManager } from './pet-manager';
 import { setPetManagerForDelegation } from './tools/delegate';
+import { setScheduleFireWithPriorityCallback } from './tools/registry';
+import { TaskPriority } from './task-scheduler';
 import { getDefaultProfile } from './profiles';
 import { EventBus } from './event-bus';
 import { SessionStore } from '../storage/session-store';
@@ -246,6 +248,19 @@ async function initPetManager(): Promise<void> {
   // Inject PetManager into delegation tools so delegate_task can access it
   setPetManagerForDelegation(petManager);
 
+  // Wire up scheduled tasks to use priority-aware delegation via PetManager.
+  // Cron fires now route through delegateWithPriority(scheduled) so user
+  // messages always take priority.
+  setScheduleFireWithPriorityCallback((prompt: string) => {
+    const chiefProfile = getDefaultProfile();
+    const pm = petManager;
+    if (!pm) return;
+    pm.delegateWithPriority(chiefProfile.id, prompt, TaskPriority.scheduled).catch((err: unknown) => {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error(`Scheduled task delegation failed: ${errorMessage}`);
+    });
+  });
+
   // Auto-create the Chief agent for backward compatibility
   try {
     const chiefProfile = getDefaultProfile();
@@ -354,7 +369,8 @@ async function handleUserInput(text: string): Promise<void> {
         chiefNeedsRebuild = false;
       }
 
-      await petManager.delegate(chiefProfile.id, text);
+      // User direct input is always critical priority (PRD R1)
+      await petManager.delegateWithPriority(chiefProfile.id, text, TaskPriority.critical);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       sendToRenderer({ type: 'error', message: errorMessage });

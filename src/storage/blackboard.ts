@@ -19,6 +19,14 @@ import type { BlackboardEntryItem } from '../shared/types';
 // Re-export shared type for consumers that import from this module
 export type { BlackboardEntryItem } from '../shared/types';
 
+/** Callback type for Blackboard key change watchers */
+export type BlackboardWatchHandler = (change: {
+  namespace: string;
+  key: string;
+  newValue: string;
+  oldValue: string | null;
+}) => void;
+
 /** Default capacity limits per namespace */
 const DEFAULT_CAPACITY = {
   global: 200,
@@ -63,6 +71,8 @@ const DEFAULT_CONFIG: BlackboardConfig = {
 export class BlackboardStore {
   private db: BetterSqlite3.Database;
   private config: BlackboardConfig;
+  /** Watchers keyed by "namespace:key" */
+  private watchers: Map<string, Set<{ handler: BlackboardWatchHandler; persistent: boolean }>> = new Map();
 
   // Prepared statements (reused for performance)
   private stmtGet: BetterSqlite3.Statement;
@@ -173,6 +183,10 @@ export class BlackboardStore {
     const now = Date.now();
     const expiresAt = options?.ttlMs ? now + options.ttlMs : null;
 
+    // Read old value before the write (for watcher notification)
+    const oldEntry = this.get(namespace, key);
+    const oldValue = oldEntry?.value ?? null;
+
     const setTransaction = this.db.transaction(() => {
       const existing = this.stmtGetExisting.get(namespace, key) as
         | { id: number }
@@ -191,6 +205,9 @@ export class BlackboardStore {
     });
 
     setTransaction();
+
+    // Notify watchers after the write
+    this.notifyWatchers(namespace, key, value, oldValue);
   }
 
   /**
@@ -296,10 +313,79 @@ export class BlackboardStore {
   }
 
   /**
-   * Close the database connection.
+   * Close the database connection and clear all watchers.
    */
   close(): void {
+    this.watchers.clear();
     this.db.close();
+  }
+
+  /**
+   * Register a watcher for a specific namespace:key.
+   * When the key's value changes via set(), the handler is invoked.
+   * If `persistent` is false, the watcher auto-removes after first invocation.
+   * Returns an unsubscribe function.
+   */
+  watchKey(
+    namespace: string,
+    key: string,
+    handler: BlackboardWatchHandler,
+    persistent: boolean = true
+  ): () => void {
+    const watcherKey = `${namespace}:${key}`;
+    let watcherSet = this.watchers.get(watcherKey);
+    if (!watcherSet) {
+      watcherSet = new Set();
+      this.watchers.set(watcherKey, watcherSet);
+    }
+
+    const entry = { handler, persistent };
+    watcherSet.add(entry);
+
+    return () => {
+      const ws = this.watchers.get(watcherKey);
+      if (ws) {
+        ws.delete(entry);
+        if (ws.size === 0) {
+          this.watchers.delete(watcherKey);
+        }
+      }
+    };
+  }
+
+  /**
+   * Notify registered watchers of a key value change.
+   * Called internally after set() completes.
+   */
+  private notifyWatchers(
+    namespace: string,
+    key: string,
+    newValue: string,
+    oldValue: string | null
+  ): void {
+    const watcherKey = `${namespace}:${key}`;
+    const watcherSet = this.watchers.get(watcherKey);
+    if (!watcherSet) return;
+
+    const change = { namespace, key, newValue, oldValue };
+
+    // Copy to avoid mutation during iteration
+    const entries = Array.from(watcherSet);
+    for (const entry of entries) {
+      // Remove one-shot watchers before invoking
+      if (!entry.persistent) {
+        watcherSet.delete(entry);
+        if (watcherSet.size === 0) {
+          this.watchers.delete(watcherKey);
+        }
+      }
+      try {
+        entry.handler(change);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[blackboard] Watcher error for ${watcherKey}: ${message}`);
+      }
+    }
   }
 
   /**
@@ -363,6 +449,20 @@ export function getBlackboardStore(config?: Partial<BlackboardConfig>): Blackboa
     storeInstance = new BlackboardStore(undefined, config);
   }
   return storeInstance;
+}
+
+/**
+ * Register a watcher on the singleton BlackboardStore for a specific namespace:key.
+ * Convenience wrapper around BlackboardStore.watchKey().
+ * Returns an unsubscribe function.
+ */
+export function watchBlackboardKey(
+  namespace: string,
+  key: string,
+  handler: BlackboardWatchHandler,
+  persistent: boolean = true
+): () => void {
+  return getBlackboardStore().watchKey(namespace, key, handler, persistent);
 }
 
 /**

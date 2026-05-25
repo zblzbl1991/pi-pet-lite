@@ -22,6 +22,8 @@ src/
 │   ├── agent-process.ts     # Utility process entry: MessagePort relay
 │   ├── llm.ts               # Dynamic ESM import wrapper for pi-ai
 │   ├── runtime.ts           # Agent runtime: thin wrapper over AgentBackend
+│   ├── task-scheduler.ts    # Priority scheduler with deps and Blackboard watchers
+│   ├── task-queue.ts        # Legacy: TaskResult type only (scheduler replaced the queue)
 │   ├── state-machine.ts     # State transitions + GIF mapping
 │   ├── backends/            # AgentBackend implementations (engine abstraction)
 │   │   ├── types.ts         # AgentBackend interface, BackendEvent, BackendConfig
