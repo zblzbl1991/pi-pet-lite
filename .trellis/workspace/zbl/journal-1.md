@@ -472,3 +472,47 @@ Integrate A2A remote agent support with pet team management; add hot-reload Chie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: P1 + P2 全部 6 任务: Agent Runtime 演进路线 P1-P2 交付
+
+**Date**: 2026-05-25
+**Task**: P1 + P2 全部 6 任务: Agent Runtime 演进路线 P1-P2 交付
+**Branch**: `master`
+
+### Summary
+
+完成 Agent Runtime 演进路线全部 P1(3) 和 P2(3) 任务。P1: AgentBackend 抽象、TaskScheduler 优先级调度、Agent 直连通信。P2: Plugin/Tool API 含 Settings UI、Session 分支/Checkpoint/导出导入、Workflow YAML DSL 引擎含 DAG 并行执行。共新增约 7200 行代码，覆盖 6 个架构层次。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `320873d` | (see git log) |
+| `d148ecb` | (see git log) |
+| `9257810` | (see git log) |
+| `aee31ea` | (see git log) |
+| `fef16b0` | (see git log) |
+| `ab4738b` | (see git log) |
+| `c7dcb21` | (see git log) |
+| `ef7a963` | (see git log) |
+| `f5cb5a5` | (see git log) |
+| `b1a0910` | (see git log) |
+| `6ab7a35` | (see git log) |
+| `fe93257` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
