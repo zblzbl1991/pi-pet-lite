@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile, PluginSummary } from '../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot } from '../shared/types';
 
 /**
  * Preload script for the settings BrowserWindow.
@@ -126,6 +126,52 @@ const api = {
     return ipcRenderer.invoke('plugin:uninstall', name) as Promise<{
       success: boolean;
       error?: string;
+    }>;
+  },
+
+  // Workflow management IPC
+  listWorkflows(): Promise<WorkflowDefinition[]> {
+    return ipcRenderer.invoke('workflow:list') as Promise<WorkflowDefinition[]>;
+  },
+
+  runWorkflow(workflowName: string, inputs: Record<string, unknown>): Promise<{ runId: string; success: boolean; error?: string }> {
+    return ipcRenderer.invoke('workflow:run', workflowName, inputs) as Promise<{
+      runId: string;
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  pauseWorkflow(runId: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('workflow:pause', runId) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  resumeWorkflow(runId: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('workflow:resume', runId) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  cancelWorkflow(runId: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('workflow:cancel', runId) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  getWorkflowStatus(runId: string): Promise<{ run: WorkflowRunSnapshot | null }> {
+    return ipcRenderer.invoke('workflow:status', runId) as Promise<{
+      run: WorkflowRunSnapshot | null;
+    }>;
+  },
+
+  getWorkflowHistory(): Promise<{ runs: WorkflowRunSnapshot[] }> {
+    return ipcRenderer.invoke('workflow:history') as Promise<{
+      runs: WorkflowRunSnapshot[];
     }>;
   },
 

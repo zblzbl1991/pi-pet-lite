@@ -273,3 +273,12 @@ export const IPC_SESSION_EXPORT_RANGE = 'session:export-range';
 export const IPC_SESSION_IMPORT = 'session:import';
 export const IPC_SESSION_LIST_BRANCHES = 'session:list-branches';
 export const IPC_SESSION_GET_TREE = 'session:get-tree';
+
+/** IPC channels for workflow operations (main <-> renderer <-> agent) */
+export const IPC_WORKFLOW_LIST = 'workflow:list';
+export const IPC_WORKFLOW_RUN = 'workflow:run';
+export const IPC_WORKFLOW_PAUSE = 'workflow:pause';
+export const IPC_WORKFLOW_RESUME = 'workflow:resume';
+export const IPC_WORKFLOW_CANCEL = 'workflow:cancel';
+export const IPC_WORKFLOW_STATUS = 'workflow:status';
+export const IPC_WORKFLOW_HISTORY = 'workflow:history';

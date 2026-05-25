@@ -37,6 +37,13 @@ import {
   IPC_PLUGIN_DISABLE,
   IPC_PLUGIN_INSTALL,
   IPC_PLUGIN_UNINSTALL,
+  IPC_WORKFLOW_LIST,
+  IPC_WORKFLOW_RUN,
+  IPC_WORKFLOW_PAUSE,
+  IPC_WORKFLOW_RESUME,
+  IPC_WORKFLOW_CANCEL,
+  IPC_WORKFLOW_STATUS,
+  IPC_WORKFLOW_HISTORY,
 } from '../shared/constants';
 import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig, updateRiskLevel, updateProfilesConfig, resetProfilesConfig } from '../config/config-store';
 import { registerBlackboardIpcHandlers } from './blackboard-ipc';
@@ -53,6 +60,8 @@ import type {
   AgentToRendererMessage,
   RendererToAgentMessage,
   PluginSummary,
+  WorkflowDefinition,
+  WorkflowRunSnapshot,
 } from '../shared/types';
 import { getDefaultProfile, getProfileById } from '../agent/profiles';
 
@@ -945,6 +954,166 @@ function bootstrap(): void {
         );
       }
     );
+
+    // ---- Workflow management IPC handlers ----
+    // These relay workflow operations to the agent process via MessagePort.
+
+    /** Pending workflow request promises keyed by response type */
+    const pendingWorkflowRequests = new Map<string, {
+      resolve: (value: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }>();
+
+    function relayWorkflowRequest<T>(msg: RendererToAgentMessage, responsePrefix: string, timeoutMs = 15000): Promise<T> {
+      return new Promise<T>((resolve) => {
+        const key = responsePrefix;
+        const existing = pendingWorkflowRequests.get(key);
+        if (existing) {
+          clearTimeout(existing.timer);
+          pendingWorkflowRequests.delete(key);
+        }
+
+        const timer = setTimeout(() => {
+          pendingWorkflowRequests.delete(key);
+          resolve({ success: false, error: 'Request timed out' } as unknown as T);
+        }, timeoutMs);
+
+        pendingWorkflowRequests.set(key, { resolve: resolve as (value: unknown) => void, timer });
+        mainPort.postMessage(msg);
+      });
+    }
+
+    // Handle workflow responses from agent process.
+    const _workflowResponseHandler = (msg: AgentToRendererMessage): boolean => {
+      switch (msg.type) {
+        case 'workflow-list-response': {
+          const pending = pendingWorkflowRequests.get('workflow-list');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingWorkflowRequests.delete('workflow-list');
+            pending.resolve(msg.workflows);
+          }
+          return true;
+        }
+        case 'workflow-run-response': {
+          const pending = pendingWorkflowRequests.get('workflow-run');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingWorkflowRequests.delete('workflow-run');
+            pending.resolve({ runId: msg.runId, success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'workflow-pause-response': {
+          const pending = pendingWorkflowRequests.get('workflow-pause');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingWorkflowRequests.delete('workflow-pause');
+            pending.resolve({ runId: msg.runId, success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'workflow-resume-response': {
+          const pending = pendingWorkflowRequests.get('workflow-resume');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingWorkflowRequests.delete('workflow-resume');
+            pending.resolve({ runId: msg.runId, success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'workflow-cancel-response': {
+          const pending = pendingWorkflowRequests.get('workflow-cancel');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingWorkflowRequests.delete('workflow-cancel');
+            pending.resolve({ runId: msg.runId, success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'workflow-status-response': {
+          const pending = pendingWorkflowRequests.get('workflow-status');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingWorkflowRequests.delete('workflow-status');
+            pending.resolve({ run: msg.run });
+          }
+          return true;
+        }
+        case 'workflow-history-response': {
+          const pending = pendingWorkflowRequests.get('workflow-history');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingWorkflowRequests.delete('workflow-history');
+            pending.resolve({ runs: msg.runs });
+          }
+          return true;
+        }
+        default:
+          return false;
+      }
+    };
+
+    // Register workflow response handler as another listener on the MessagePort.
+    mainPort.on('message', (event: unknown) => {
+      const msg = (event as { data: AgentToRendererMessage }).data;
+      _workflowResponseHandler(msg);
+    });
+
+    ipcMain.handle(IPC_WORKFLOW_LIST, async (): Promise<WorkflowDefinition[]> => {
+      return relayWorkflowRequest<WorkflowDefinition[]>({ type: 'workflow:list' }, 'workflow-list');
+    });
+
+    ipcMain.handle(
+      IPC_WORKFLOW_RUN,
+      async (_event: Electron.IpcMainInvokeEvent, workflowName: string, inputs: Record<string, unknown>) => {
+        return relayWorkflowRequest<{ runId: string; success: boolean; error?: string }>(
+          { type: 'workflow:run', workflowName, inputs }, 'workflow-run', 30000
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_WORKFLOW_PAUSE,
+      async (_event: Electron.IpcMainInvokeEvent, runId: string) => {
+        return relayWorkflowRequest<{ success: boolean; error?: string }>(
+          { type: 'workflow:pause', runId }, 'workflow-pause'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_WORKFLOW_RESUME,
+      async (_event: Electron.IpcMainInvokeEvent, runId: string) => {
+        return relayWorkflowRequest<{ success: boolean; error?: string }>(
+          { type: 'workflow:resume', runId }, 'workflow-resume'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_WORKFLOW_CANCEL,
+      async (_event: Electron.IpcMainInvokeEvent, runId: string) => {
+        return relayWorkflowRequest<{ success: boolean; error?: string }>(
+          { type: 'workflow:cancel', runId }, 'workflow-cancel'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_WORKFLOW_STATUS,
+      async (_event: Electron.IpcMainInvokeEvent, runId: string) => {
+        return relayWorkflowRequest<{ run: WorkflowRunSnapshot | null }>(
+          { type: 'workflow:status', runId }, 'workflow-status'
+        );
+      }
+    );
+
+    ipcMain.handle(IPC_WORKFLOW_HISTORY, async () => {
+      return relayWorkflowRequest<{ runs: WorkflowRunSnapshot[] }>(
+        { type: 'workflow:history' }, 'workflow-history'
+      );
+    });
 
     app.on('window-all-closed', () => {
       // App continues running in system tray

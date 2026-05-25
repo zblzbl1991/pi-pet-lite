@@ -125,7 +125,28 @@ export const PetWindow: React.FC = () => {
           case 'error':
           case 'pet-status':
           case 'pet-statuses':
-            // These are handled by the ChatWindow; pet only tracks state
+          case 'plugin-list-response':
+          case 'plugin-enable-response':
+          case 'plugin-disable-response':
+          case 'plugin-install-response':
+          case 'plugin-uninstall-response':
+          case 'session-branch-response':
+          case 'session-checkpoint-response':
+          case 'session-restore-checkpoint-response':
+          case 'session-checkpoints-list':
+          case 'session-delete-checkpoint-response':
+          case 'session-export-response':
+          case 'session-import-response':
+          case 'session-branches-list':
+          case 'session-tree':
+          case 'workflow-list-response':
+          case 'workflow-run-response':
+          case 'workflow-pause-response':
+          case 'workflow-resume-response':
+          case 'workflow-cancel-response':
+          case 'workflow-status-response':
+          case 'workflow-history-response':
+            // These are handled by the ChatWindow/Settings; pet only tracks state
             break;
 
           default: {

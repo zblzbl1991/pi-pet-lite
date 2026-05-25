@@ -18,6 +18,8 @@ import type {
   PetConfig,
   PetStatusUpdateData,
   PluginSummary,
+  WorkflowDefinition,
+  WorkflowRunSnapshot,
 } from '../shared/types';
 
 /**
@@ -42,6 +44,13 @@ export interface SettingsElectronAPI {
   disablePlugin: (name: string) => Promise<{ success: boolean; error?: string }>;
   installPlugin: (sourcePath: string) => Promise<{ success: boolean; name?: string; error?: string }>;
   uninstallPlugin: (name: string) => Promise<{ success: boolean; error?: string }>;
+  listWorkflows: () => Promise<WorkflowDefinition[]>;
+  runWorkflow: (workflowName: string, inputs: Record<string, unknown>) => Promise<{ runId: string; success: boolean; error?: string }>;
+  pauseWorkflow: (runId: string) => Promise<{ success: boolean; error?: string }>;
+  resumeWorkflow: (runId: string) => Promise<{ success: boolean; error?: string }>;
+  cancelWorkflow: (runId: string) => Promise<{ success: boolean; error?: string }>;
+  getWorkflowStatus: (runId: string) => Promise<{ run: WorkflowRunSnapshot | null }>;
+  getWorkflowHistory: () => Promise<{ runs: WorkflowRunSnapshot[] }>;
   closeWindow: () => void;
 }
 

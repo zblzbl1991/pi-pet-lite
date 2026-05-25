@@ -35,6 +35,12 @@ src/
 │   │   ├── loader.ts        # Directory scanner, load/unload, hot reload
 │   │   ├── adapters.ts      # ToolPlugin → AgentTool conversion
 │   │   └── index.ts         # Barrel export
+│   ├── workflow/            # Workflow DSL engine
+│   │   ├── types.ts         # WorkflowDefinition, WorkflowRun, DAGNode
+│   │   ├── parser.ts        # YAML/JSON parser, DAG builder, template resolver
+│   │   ├── engine.ts        # DAG execution engine (parallel, lifecycle)
+│   │   ├── loader.ts        # ~/.clawd/workflows/ scanner, hot reload
+│   │   └── index.ts         # Barrel export
 │   └── tools/               # Agent tools
 │       ├── registry.ts      # Central tool registry
 │       ├── browser.ts       # Browser automation tool

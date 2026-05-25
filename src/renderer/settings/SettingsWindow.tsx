@@ -17,8 +17,17 @@ import {
   Wifi,
   RefreshCw,
   Link,
+  GitBranch,
+  Play,
+  Pause,
+  Square,
+  Clock,
+  CheckCircle,
+  XCircle,
+  SkipForward,
+  Loader,
 } from 'lucide-react';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole, AgentCardInfo, PluginSummary } from '../../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole, AgentCardInfo, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot, StepResult } from '../../shared/types';
 import { TOOL_GROUPS, CUSTOM_PROFILE_DEFAULT_PROMPT, CUSTOM_PROFILE_DEFAULT_TOOLS } from '../../shared/constants';
 
 /** Provider option with display label and available models */
@@ -92,7 +101,7 @@ const PROVIDERS: ProviderOption[] = [
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
 /** Sidebar navigation sections */
-type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets' | 'plugins';
+type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets' | 'plugins' | 'workflows';
 
 const sharedStyles: Record<string, React.CSSProperties> = {
   label: {
@@ -1406,6 +1415,549 @@ function PluginsSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Workflows Section — Workflow management
+// ---------------------------------------------------------------------------
+
+/** Map step status to display info */
+function stepStatusInfo(status: string): { color: string; icon: React.ReactNode; label: string } {
+  switch (status) {
+    case 'completed':
+      return { color: 'var(--success)', icon: <CheckCircle size={12} strokeWidth={1.5} />, label: 'Completed' };
+    case 'running':
+      return { color: 'var(--brand)', icon: <Loader size={12} strokeWidth={1.5} />, label: 'Running' };
+    case 'failed':
+      return { color: 'var(--danger)', icon: <XCircle size={12} strokeWidth={1.5} />, label: 'Failed' };
+    case 'skipped':
+      return { color: 'var(--text-tertiary)', icon: <SkipForward size={12} strokeWidth={1.5} />, label: 'Skipped' };
+    case 'pending':
+    default:
+      return { color: 'var(--text-tertiary)', icon: <Clock size={12} strokeWidth={1.5} />, label: 'Pending' };
+  }
+}
+
+function runStatusInfo(status: string): { color: string; label: string } {
+  switch (status) {
+    case 'running':
+      return { color: 'var(--brand)', label: 'Running' };
+    case 'paused':
+      return { color: 'var(--warning)', label: 'Paused' };
+    case 'completed':
+      return { color: 'var(--success)', label: 'Completed' };
+    case 'failed':
+      return { color: 'var(--danger)', label: 'Failed' };
+    case 'cancelled':
+      return { color: 'var(--text-tertiary)', label: 'Cancelled' };
+    default:
+      return { color: 'var(--text-tertiary)', label: status };
+  }
+}
+
+function WorkflowsSection() {
+  const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [expandedWf, setExpandedWf] = useState<string | null>(null);
+  const [showRunModal, setShowRunModal] = useState<string | null>(null);
+  const [inputValues, setInputValues] = useState<Record<string, unknown>>({});
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [activeRunSnapshot, setActiveRunSnapshot] = useState<WorkflowRunSnapshot | null>(null);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [history, setHistory] = useState<WorkflowRunSnapshot[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadWorkflowsList = useCallback(async () => {
+    if (!window.settingsAPI?.listWorkflows) return;
+    try {
+      const list = await window.settingsAPI.listWorkflows();
+      setWorkflows(list ?? []);
+    } catch {
+      // Workflow API not available
+    }
+    setHasLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    loadWorkflowsList();
+  }, [loadWorkflowsList]);
+
+  const loadHistory = useCallback(async () => {
+    if (!window.settingsAPI?.getWorkflowHistory) return;
+    try {
+      const result = await window.settingsAPI.getWorkflowHistory();
+      setHistory(result?.runs ?? []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Poll active run status
+  useEffect(() => {
+    if (!activeRunId) return;
+    const interval = setInterval(async () => {
+      try {
+        const result = await window.settingsAPI?.getWorkflowStatus(activeRunId);
+        if (result?.run) {
+          setActiveRunSnapshot(result.run);
+          if (result.run.status !== 'running' && result.run.status !== 'paused') {
+            clearInterval(interval);
+            loadHistory();
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [activeRunId, loadHistory]);
+
+  const handleRun = useCallback(async (workflowName: string) => {
+    if (!window.settingsAPI?.runWorkflow) return;
+    setSaveMessage('');
+
+    try {
+      const result = await window.settingsAPI.runWorkflow(workflowName, inputValues);
+      if (result.success && result.runId) {
+        setActiveRunId(result.runId);
+        setActiveRunSnapshot(null);
+        setShowRunModal(null);
+        setInputValues({});
+        setSaveMessage(`Workflow started: ${result.runId}`);
+      } else {
+        setSaveMessage(result.error ?? 'Failed to start workflow');
+      }
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : 'Failed to start workflow');
+    }
+    setTimeout(() => setSaveMessage(''), 5000);
+  }, [inputValues]);
+
+  const handlePause = useCallback(async (runId: string) => {
+    if (!window.settingsAPI?.pauseWorkflow) return;
+    try {
+      await window.settingsAPI.pauseWorkflow(runId);
+      // Refresh status
+      const result = await window.settingsAPI.getWorkflowStatus(runId);
+      if (result?.run) setActiveRunSnapshot(result.run);
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : 'Pause failed');
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  }, []);
+
+  const handleResume = useCallback(async (runId: string) => {
+    if (!window.settingsAPI?.resumeWorkflow) return;
+    try {
+      await window.settingsAPI.resumeWorkflow(runId);
+      const result = await window.settingsAPI.getWorkflowStatus(runId);
+      if (result?.run) setActiveRunSnapshot(result.run);
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : 'Resume failed');
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  }, []);
+
+  const handleCancel = useCallback(async (runId: string) => {
+    if (!window.settingsAPI?.cancelWorkflow) return;
+    try {
+      await window.settingsAPI.cancelWorkflow(runId);
+      const result = await window.settingsAPI.getWorkflowStatus(runId);
+      if (result?.run) setActiveRunSnapshot(result.run);
+      loadHistory();
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : 'Cancel failed');
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  }, [loadHistory]);
+
+  if (!hasLoaded) {
+    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>Loading...</div>;
+  }
+
+  const activeWorkflow = activeRunSnapshot
+    ? workflows.find((w) => w.name === activeRunSnapshot.workflowName)
+    : null;
+
+  return (
+    <>
+      <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>Workflows</span>
+        <button onClick={() => { loadHistory(); setShowHistory(!showHistory); }} style={{
+          ...sharedStyles.btn, background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer',
+          fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-3)',
+          border: `1px solid var(--border)`, borderRadius: 'var(--radius-sm)',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+        }}>
+          <Clock size={12} strokeWidth={1.5} /> {showHistory ? 'Hide History' : 'History'}
+        </button>
+      </div>
+
+      {/* Active run status */}
+      {activeRunSnapshot && (
+        <div style={{
+          padding: 'var(--space-4)', borderRadius: 'var(--radius-nav)',
+          border: `1.5px solid ${runStatusInfo(activeRunSnapshot.status).color}`,
+          background: `${runStatusInfo(activeRunSnapshot.status).color}0d`,
+          marginBottom: 'var(--space-4)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+            <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>
+              {activeRunSnapshot.workflowName}
+            </span>
+            <span style={{
+              fontSize: 'var(--text-xs)', padding: '2px 8px', borderRadius: 'var(--radius-pill)',
+              background: `${runStatusInfo(activeRunSnapshot.status).color}20`,
+              color: runStatusInfo(activeRunSnapshot.status).color,
+              fontWeight: 'var(--font-medium)',
+            }}>
+              {runStatusInfo(activeRunSnapshot.status).label}
+            </span>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
+              {new Date(activeRunSnapshot.startedAt).toLocaleTimeString()}
+            </span>
+          </div>
+
+          {/* Steps progress */}
+          {activeWorkflow && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {activeWorkflow.steps.map((step) => {
+                const stepResult = activeRunSnapshot.stepResults.find(([id]) => id === step.id);
+                const sr: StepResult | undefined = stepResult?.[1];
+                const info = stepStatusInfo(sr?.status ?? 'pending');
+                return (
+                  <div key={step.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                    padding: 'var(--space-2) var(--space-3)',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-elevated)',
+                  }}>
+                    <span style={{ color: info.color, display: 'flex', alignItems: 'center' }}>{info.icon}</span>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', fontWeight: 'var(--font-medium)' }}>
+                      {step.id}
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      {'-> '}{step.agent}
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: info.color, marginLeft: 'auto' }}>
+                      {info.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Control buttons */}
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
+            {activeRunSnapshot.status === 'running' && (
+              <>
+                <button onClick={() => handlePause(activeRunSnapshot.id)} style={{
+                  ...sharedStyles.btn, background: 'var(--warning)', color: '#000', cursor: 'pointer',
+                  fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-3)',
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                }}>
+                  <Pause size={12} strokeWidth={1.5} /> Pause
+                </button>
+                <button onClick={() => handleCancel(activeRunSnapshot.id)} style={{
+                  ...sharedStyles.btn, background: 'var(--danger)', color: '#fff', cursor: 'pointer',
+                  fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-3)',
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                }}>
+                  <Square size={12} strokeWidth={1.5} /> Cancel
+                </button>
+              </>
+            )}
+            {activeRunSnapshot.status === 'paused' && (
+              <>
+                <button onClick={() => handleResume(activeRunSnapshot.id)} style={{
+                  ...sharedStyles.btn, background: 'var(--success)', color: '#fff', cursor: 'pointer',
+                  fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-3)',
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                }}>
+                  <Play size={12} strokeWidth={1.5} /> Resume
+                </button>
+                <button onClick={() => handleCancel(activeRunSnapshot.id)} style={{
+                  ...sharedStyles.btn, background: 'var(--danger)', color: '#fff', cursor: 'pointer',
+                  fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-3)',
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                }}>
+                  <Square size={12} strokeWidth={1.5} /> Cancel
+                </button>
+              </>
+            )}
+            {(activeRunSnapshot.status !== 'running' && activeRunSnapshot.status !== 'paused') && (
+              <button onClick={() => { setActiveRunId(null); setActiveRunSnapshot(null); }} style={{
+                ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
+                fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-3)',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              }}>
+                <X size={12} strokeWidth={1.5} /> Dismiss
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* History */}
+      {showHistory && (
+        <div style={{
+          marginBottom: 'var(--space-4)', padding: 'var(--space-4)',
+          borderRadius: 'var(--radius-nav)', border: `1px solid var(--border-subtle)`,
+          background: 'var(--bg-elevated)',
+        }}>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
+            Run History
+          </div>
+          {history.length === 0 ? (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>No workflow runs yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {history.slice().reverse().map((run) => {
+                const info = runStatusInfo(run.status);
+                const completedSteps = run.stepResults.filter(([, sr]) => sr.status === 'completed').length;
+                return (
+                  <div key={run.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                    padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-page)',
+                  }}>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', fontWeight: 'var(--font-medium)' }}>
+                      {run.workflowName}
+                    </span>
+                    <span style={{
+                      fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-pill)',
+                      background: `${info.color}20`, color: info.color,
+                    }}>
+                      {info.label}
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      {completedSteps}/{run.stepResults.length} steps
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
+                      {new Date(run.startedAt).toLocaleString()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Workflow list */}
+      {workflows.length === 0 && (
+        <div style={{
+          padding: 'var(--space-6)', textAlign: 'center',
+          background: 'var(--bg-elevated)', borderRadius: 'var(--radius-nav)',
+          border: `1px solid var(--border-subtle)`,
+        }}>
+          <div style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+            No workflows found
+          </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-4)' }}>
+            Place YAML or JSON workflow files in ~/.clawd/workflows/
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        {workflows.map((wf) => {
+          const isExpanded = expandedWf === wf.name;
+          return (
+            <div key={wf.name} style={{
+              padding: 'var(--space-3) var(--space-4)',
+              borderRadius: 'var(--radius-nav)',
+              border: `1.5px solid ${isExpanded ? 'var(--brand)' : 'var(--border-subtle)'}`,
+              background: isExpanded ? 'var(--brand-glow)' : 'var(--bg-elevated)',
+              transition: 'all var(--duration-fast)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <GitBranch size={14} strokeWidth={1.5} style={{ color: 'var(--brand)', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>
+                    {wf.name}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {wf.description || 'No description'}
+                    <span style={{ marginLeft: 'var(--space-2)' }}>
+                      ({wf.steps.length} steps)
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (wf.inputs.length > 0) {
+                      setShowRunModal(wf.name);
+                      setInputValues({});
+                    } else {
+                      handleRun(wf.name);
+                    }
+                  }}
+                  disabled={!!activeRunId}
+                  style={{
+                    padding: 'var(--space-1) var(--space-3)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: 'none',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 'var(--font-medium)',
+                    cursor: activeRunId ? 'not-allowed' : 'pointer',
+                    background: 'var(--brand)',
+                    color: '#fff',
+                    fontFamily: 'inherit',
+                    opacity: activeRunId ? 0.4 : 1,
+                    flexShrink: 0,
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                  }}
+                >
+                  <Play size={10} strokeWidth={1.5} /> Run
+                </button>
+                <button
+                  onClick={() => setExpandedWf(isExpanded ? null : wf.name)}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
+                    fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)',
+                  }}
+                >
+                  {isExpanded ? 'Close' : 'Details'}
+                </button>
+              </div>
+
+              {/* Expanded step list */}
+              {isExpanded && (
+                <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  {wf.steps.map((step) => (
+                    <div key={step.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--bg-page)',
+                    }}>
+                      <span style={{
+                        fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-pill)',
+                        background: 'var(--brand-glow)', color: 'var(--brand-light)',
+                      }}>
+                        {step.agent}
+                      </span>
+                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', fontWeight: 'var(--font-medium)' }}>
+                        {step.id}
+                      </span>
+                      {step.dependsOn && step.dependsOn.length > 0 && (
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                          (after: {step.dependsOn.join(', ')})
+                        </span>
+                      )}
+                      {step.condition && (
+                        <span style={{
+                          fontSize: 'var(--text-xs)', color: 'var(--warning)',
+                          marginLeft: 'auto', fontStyle: 'italic',
+                        }}>
+                          if: {step.condition}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <SaveStatus message={saveMessage} />
+
+      {/* Run modal with input fields */}
+      {showRunModal && (() => {
+        const wf = workflows.find((w) => w.name === showRunModal);
+        if (!wf) return null;
+        const hasRequired = wf.inputs.some((inp) => inp.required);
+        const allRequiredFilled = wf.inputs
+          .filter((inp) => inp.required)
+          .every((inp) => {
+            const val = inputValues[inp.name];
+            return val !== undefined && val !== '';
+          });
+
+        return (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000,
+          }}>
+            <div style={{
+              background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: 420,
+              border: `1px solid var(--border)`, width: '100%',
+            }}>
+              <div style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-1)' }}>
+                Run: {wf.name}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-4)' }}>
+                {wf.description || 'Enter parameters to start the workflow.'}
+              </div>
+
+              {wf.inputs.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+                  {wf.inputs.map((inp) => (
+                    <div key={inp.name}>
+                      <label style={sharedStyles.label}>
+                        {inp.name}
+                        {inp.required && <span style={{ color: 'var(--danger)', marginLeft: 'var(--space-1)' }}>*</span>}
+                      </label>
+                      {inp.type === 'boolean' ? (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!(inputValues[inp.name] ?? inp.default ?? false)}
+                            onChange={(e) => setInputValues((prev) => ({ ...prev, [inp.name]: e.target.checked }))}
+                            style={{ width: 'var(--space-4)', height: 'var(--space-4)', cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                            {inp.type} {inp.required ? '(required)' : '(optional)'}
+                          </span>
+                        </label>
+                      ) : (
+                        <input
+                          type={inp.type === 'number' ? 'number' : 'text'}
+                          value={(inputValues[inp.name] ?? inp.default ?? '') as string}
+                          onChange={(e) => setInputValues((prev) => ({
+                            ...prev,
+                            [inp.name]: inp.type === 'number' ? (Number(e.target.value) || e.target.value) : e.target.value,
+                          }))}
+                          placeholder={`${inp.type}${inp.required ? ' (required)' : ''}`}
+                          style={sharedStyles.input}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                <button onClick={() => { setShowRunModal(null); setInputValues({}); }} style={{
+                  ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                }}>
+                  <X size={14} strokeWidth={1.5} /> Cancel
+                </button>
+                <button
+                  onClick={() => handleRun(wf.name)}
+                  disabled={hasRequired && !allRequiredFilled}
+                  style={{
+                    ...sharedStyles.btn, ...sharedStyles.btnTest,
+                    opacity: hasRequired && !allRequiredFilled ? 0.4 : 1,
+                    cursor: hasRequired && !allRequiredFilled ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+                  }}
+                >
+                  <Play size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> Run Workflow
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main settings window with sidebar navigation
 // ---------------------------------------------------------------------------
 
@@ -1419,6 +1971,7 @@ export const SettingsWindow: React.FC = () => {
     { key: 'permissions', label: '权限', icon: <Shield size={16} strokeWidth={1.5} /> },
     { key: 'pets', label: '宠物', icon: <Bot size={16} strokeWidth={1.5} /> },
     { key: 'plugins', label: '插件', icon: <Plug size={16} strokeWidth={1.5} /> },
+    { key: 'workflows', label: '工作流', icon: <GitBranch size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -1479,6 +2032,7 @@ export const SettingsWindow: React.FC = () => {
           {section === 'permissions' && <PermissionsSection />}
           {section === 'pets' && <ProfilesSection />}
           {section === 'plugins' && <PluginsSection />}
+          {section === 'workflows' && <WorkflowsSection />}
         </div>
       </div>
 

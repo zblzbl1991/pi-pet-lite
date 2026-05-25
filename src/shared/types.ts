@@ -232,7 +232,14 @@ export type RendererToAgentMessage =
   | { type: 'session-export-range'; petId: string; fromSeq: number; toSeq: number }
   | { type: 'session-import'; petId: string; data: ExportedSession }
   | { type: 'session-list-branches'; petId: string }
-  | { type: 'session-get-tree'; petId: string };
+  | { type: 'session-get-tree'; petId: string }
+  | { type: 'workflow:list' }
+  | { type: 'workflow:run'; workflowName: string; inputs: Record<string, unknown> }
+  | { type: 'workflow:pause'; runId: string }
+  | { type: 'workflow:resume'; runId: string }
+  | { type: 'workflow:cancel'; runId: string }
+  | { type: 'workflow:status'; runId: string }
+  | { type: 'workflow:history' };
 
 /** Messages sent from agent to renderer via MessagePort */
 export type AgentToRendererMessage =
@@ -261,7 +268,14 @@ export type AgentToRendererMessage =
   | { type: 'session-export-response'; data: ExportedSession | null; error?: string }
   | { type: 'session-import-response'; success: boolean; sessionId?: string; error?: string }
   | { type: 'session-branches-list'; branches: SessionInfo[] }
-  | { type: 'session-tree'; tree: SessionTreeNode[] };
+  | { type: 'session-tree'; tree: SessionTreeNode[] }
+  | { type: 'workflow-list-response'; workflows: WorkflowDefinition[] }
+  | { type: 'workflow-run-response'; runId: string; success: boolean; error?: string }
+  | { type: 'workflow-pause-response'; runId: string; success: boolean; error?: string }
+  | { type: 'workflow-resume-response'; runId: string; success: boolean; error?: string }
+  | { type: 'workflow-cancel-response'; runId: string; success: boolean; error?: string }
+  | { type: 'workflow-status-response'; run: WorkflowRunSnapshot | null }
+  | { type: 'workflow-history-response'; runs: WorkflowRunSnapshot[] };
 
 /** Pet status report for IPC communication */
 export interface PetStatusReportMessage {
@@ -404,4 +418,73 @@ export interface ExportedSession {
   session: { petId: string; title: string | null; createdAt: number };
   messages: Array<{ seq: number; role: string; content: string }>;
   checkpoints?: Array<{ id: string; label: string | null; snapshot: string; createdAt: number }>;
+}
+
+// ---- Workflow Types ----
+
+/** A single input parameter for a workflow */
+export interface WorkflowInput {
+  name: string;
+  type: 'string' | 'number' | 'boolean';
+  required: boolean;
+  default?: unknown;
+}
+
+/** A single step in a workflow definition */
+export interface WorkflowStepDef {
+  id: string;
+  agent: string;
+  prompt: string;
+  dependsOn?: string[];
+  outputKey?: string;
+  condition?: string;
+}
+
+/** Full workflow definition for IPC transport */
+export interface WorkflowDefinition {
+  name: string;
+  description: string;
+  inputs: WorkflowInput[];
+  steps: WorkflowStepDef[];
+}
+
+/** Status of a workflow run */
+export const WorkflowRunStatus = {
+  RUNNING: 'running',
+  PAUSED: 'paused',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+} as const;
+export type WorkflowRunStatus = (typeof WorkflowRunStatus)[keyof typeof WorkflowRunStatus];
+
+/** Status of an individual step */
+export const StepStatus = {
+  PENDING: 'pending',
+  RUNNING: 'running',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  SKIPPED: 'skipped',
+} as const;
+export type StepStatus = (typeof StepStatus)[keyof typeof StepStatus];
+
+/** Result of a single step execution */
+export interface StepResult {
+  stepId: string;
+  status: StepStatus;
+  output?: string;
+  error?: string;
+  startedAt?: number;
+  completedAt?: number;
+}
+
+/** Serializable workflow run snapshot for IPC */
+export interface WorkflowRunSnapshot {
+  id: string;
+  workflowName: string;
+  status: WorkflowRunStatus;
+  inputs: Record<string, unknown>;
+  stepResults: Array<[string, StepResult]>;
+  startedAt: number;
+  completedAt?: number;
 }

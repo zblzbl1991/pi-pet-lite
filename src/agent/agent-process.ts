@@ -29,6 +29,13 @@ import { EventBus } from './event-bus';
 import { SessionStore } from '../storage/session-store';
 import { Tracer } from './tracer';
 import { SESSIONS_DB_FILENAME } from '../shared/constants';
+import {
+  loadWorkflows as loadWorkflowDefinitions,
+  getWorkflowDefinitions,
+  getWorkflow,
+  watchForChanges as watchWorkflowChanges,
+  WorkflowEngine,
+} from './workflow';
 import path from 'path';
 
 let agentPort: MessagePortMain | null = null;
@@ -37,6 +44,7 @@ let petManager: PetManager | null = null;
 let eventBus: EventBus | null = null;
 let sessionStore: SessionStore | null = null;
 let tracer: Tracer | null = null;
+let workflowEngine: WorkflowEngine | null = null;
 
 /** Whether multi-pet mode is enabled */
 let multiPetMode = false;
@@ -217,6 +225,10 @@ async function initPetManager(): Promise<void> {
   loadPlugins();
   watchForChanges();
 
+  // Load workflow definitions from ~/.clawd/workflows/
+  loadWorkflowDefinitions();
+  watchWorkflowChanges();
+
   // Initialize SessionStore for conversation persistence
   const userDataPath = process.env.CLAWD_USER_DATA;
   if (userDataPath) {
@@ -251,6 +263,9 @@ async function initPetManager(): Promise<void> {
   );
 
   petManager.startReaper();
+
+  // Initialize WorkflowEngine with PetManager reference
+  workflowEngine = new WorkflowEngine(petManager);
 
   // Inject PetManager into delegation tools so delegate_task can access it
   setPetManagerForDelegation(petManager);
@@ -448,6 +463,44 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
 
     case 'session-get-tree': {
       handleSessionGetTree(msg.petId);
+      break;
+    }
+
+    case 'workflow:list': {
+      handleWorkflowList();
+      break;
+    }
+
+    case 'workflow:run': {
+      handleWorkflowRun(msg.workflowName, msg.inputs).catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error('[agent-process] workflow:run error:', errMsg);
+      });
+      break;
+    }
+
+    case 'workflow:pause': {
+      handleWorkflowPause(msg.runId);
+      break;
+    }
+
+    case 'workflow:resume': {
+      handleWorkflowResume(msg.runId);
+      break;
+    }
+
+    case 'workflow:cancel': {
+      handleWorkflowCancel(msg.runId);
+      break;
+    }
+
+    case 'workflow:status': {
+      handleWorkflowStatus(msg.runId);
+      break;
+    }
+
+    case 'workflow:history': {
+      handleWorkflowHistory();
       break;
     }
 
@@ -750,6 +803,113 @@ function handleSessionGetTree(petId: string): void {
 
   const tree = petManager.getSessionTree(petId);
   sendToRenderer({ type: 'session-tree', tree });
+}
+
+// ---------------------------------------------------------------------------
+// Workflow handlers
+// ---------------------------------------------------------------------------
+
+function handleWorkflowList(): void {
+  const definitions = getWorkflowDefinitions();
+  sendToRenderer({ type: 'workflow-list-response', workflows: definitions });
+}
+
+async function handleWorkflowRun(workflowName: string, inputs: Record<string, unknown>): Promise<void> {
+  if (!workflowEngine) {
+    sendToRenderer({ type: 'workflow-run-response', runId: '', success: false, error: 'WorkflowEngine not initialized' });
+    return;
+  }
+
+  const definition = getWorkflow(workflowName);
+  if (!definition) {
+    sendToRenderer({ type: 'workflow-run-response', runId: '', success: false, error: `Workflow "${workflowName}" not found` });
+    return;
+  }
+
+  try {
+    const runId = workflowEngine.run(definition, inputs);
+    sendToRenderer({ type: 'workflow-run-response', runId, success: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'workflow-run-response', runId: '', success: false, error: msg });
+  }
+}
+
+function handleWorkflowPause(runId: string): void {
+  if (!workflowEngine) {
+    sendToRenderer({ type: 'workflow-pause-response', runId, success: false, error: 'WorkflowEngine not initialized' });
+    return;
+  }
+
+  try {
+    workflowEngine.pause(runId);
+    sendToRenderer({ type: 'workflow-pause-response', runId, success: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'workflow-pause-response', runId, success: false, error: msg });
+  }
+}
+
+function handleWorkflowResume(runId: string): void {
+  if (!workflowEngine) {
+    sendToRenderer({ type: 'workflow-resume-response', runId, success: false, error: 'WorkflowEngine not initialized' });
+    return;
+  }
+
+  const run = workflowEngine.getStatus(runId);
+  if (!run) {
+    sendToRenderer({ type: 'workflow-resume-response', runId, success: false, error: 'Run not found' });
+    return;
+  }
+
+  const definition = getWorkflow(run.workflowName);
+  if (!definition) {
+    sendToRenderer({ type: 'workflow-resume-response', runId, success: false, error: 'Workflow definition not found' });
+    return;
+  }
+
+  try {
+    workflowEngine.resume(runId, definition);
+    sendToRenderer({ type: 'workflow-resume-response', runId, success: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'workflow-resume-response', runId, success: false, error: msg });
+  }
+}
+
+function handleWorkflowCancel(runId: string): void {
+  if (!workflowEngine) {
+    sendToRenderer({ type: 'workflow-cancel-response', runId, success: false, error: 'WorkflowEngine not initialized' });
+    return;
+  }
+
+  try {
+    workflowEngine.cancel(runId);
+    sendToRenderer({ type: 'workflow-cancel-response', runId, success: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'workflow-cancel-response', runId, success: false, error: msg });
+  }
+}
+
+function handleWorkflowStatus(runId: string): void {
+  if (!workflowEngine) {
+    sendToRenderer({ type: 'workflow-status-response', run: null });
+    return;
+  }
+
+  const snapshot = workflowEngine.getRunSnapshot(runId);
+  sendToRenderer({ type: 'workflow-status-response', run: snapshot });
+}
+
+function handleWorkflowHistory(): void {
+  if (!workflowEngine) {
+    sendToRenderer({ type: 'workflow-history-response', runs: [] });
+    return;
+  }
+
+  const snapshots = workflowEngine.listRunSnapshots();
+  sendToRenderer({ type: 'workflow-history-response', runs: snapshots });
 }
 
 /**

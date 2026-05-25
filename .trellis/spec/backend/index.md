@@ -184,4 +184,31 @@ Migration is idempotent (checks column existence before ALTER).
 
 ---
 
+## Architecture: Workflow DSL
+
+Declarative YAML/JSON multi-agent workflow orchestration stored in `~/.clawd/workflows/`.
+
+### Key concepts
+
+- **YAML DSL**: steps with agent, prompt template, `dependsOn`, `condition`, `outputKey`
+- **DAG execution**: parallel for independent steps, sequential for dependent (topological sort)
+- **Condition expressions**: `contains`/`equals`/`not_empty` only — no eval, no code injection
+- **Lifecycle**: run → pause → resume → cancel, with per-step status tracking
+
+### Execution flow
+
+1. Parse YAML/JSON → `WorkflowDefinition`
+2. Build DAG (adjacency list), validate (no cycles, valid deps)
+3. Find in-degree-0 nodes → execute in parallel via `PetManager.delegateWithPriority(scheduled)`
+4. On step completion: resolve template for downstream steps, evaluate conditions, unlock new nodes
+5. All nodes done → workflow completed
+
+### Integration points
+
+- `WorkflowEngine` takes `PetManager` as dependency
+- IPC bridge: renderer → main → agent process (same pattern as plugins)
+- Settings UI: list workflows, run with inputs, monitor progress, history
+
+---
+
 **Language**: All documentation should be written in **English**.
