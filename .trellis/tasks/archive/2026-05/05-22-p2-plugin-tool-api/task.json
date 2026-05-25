@@ -3,7 +3,7 @@
   "name": "05-22-p2-plugin-tool-api",
   "title": "P2.1 Plugin/Tool 开放 API",
   "description": "让社区和用户能贡献自定义 tool，这是 OpenClaw 最自然的参与入口。定义 ToolPlugin 接口，扫描 ~/.clawd/plugins/ 目录加载用户自定义 tool，PetProfile 的 toolNames 自动包含已安装 plugin。",
-  "status": "backlog",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": "backend",
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": null,
   "createdAt": "2026-05-22",
-  "completedAt": null,
+  "completedAt": "2026-05-25",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -26,5 +26,11 @@
     "src/agent/tools/*.ts"
   ],
   "notes": "OpenClaw 第一个开放点。预计 Week 5-6。",
-  "meta": { "phase": "P2", "week": "5-6", "depends_on": ["05-22-p1-agent-backend-abstraction"] }
+  "meta": {
+    "phase": "P2",
+    "week": "5-6",
+    "depends_on": [
+      "05-22-p1-agent-backend-abstraction"
+    ]
+  }
 }
