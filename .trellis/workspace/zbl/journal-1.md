@@ -390,3 +390,43 @@ Integrate A2A remote agent support with pet team management; add hot-reload Chie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: P1 全部 + P2.1: Backend 抽象 + 调度器 + 消息 + Plugin API
+
+**Date**: 2026-05-25
+**Task**: P1 全部 + P2.1: Backend 抽象 + 调度器 + 消息 + Plugin API
+**Branch**: `master`
+
+### Summary
+
+完成 P1 三个任务(P1.1 AgentBackend 抽象层、P1.2 TaskScheduler 优先级调度、P1.3 Agent 直连通信)和 P2.1 Plugin/Tool 开放 API(ToolPlugin 接口、目录扫描加载器、Settings Plugins 管理页面、跨进程 IPC 桥接)。本轮共交付 4 个任务，新增约 3700 行代码。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `320873d` | (see git log) |
+| `d148ecb` | (see git log) |
+| `9257810` | (see git log) |
+| `aee31ea` | (see git log) |
+| `fef16b0` | (see git log) |
+| `ab4738b` | (see git log) |
+| `c7dcb21` | (see git log) |
+| `ef7a963` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
