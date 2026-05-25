@@ -67,6 +67,9 @@ export const TRUST_POLICY: Record<string, TrustLevel> = {
   delegate_task: TrustLevel.AUTO,
   read_blackboard: TrustLevel.AUTO,
   write_blackboard: TrustLevel.AUTO,
+  // Agent-to-agent direct messaging
+  send_message: TrustLevel.AUTO,
+  check_inbox: TrustLevel.AUTO,
 };
 
 /**
@@ -95,6 +98,8 @@ export const RISK_TRUST_POLICIES: Record<RiskLevel, Record<string, TrustLevel>> 
     delegate_task: TrustLevel.CONFIRM_ONCE,
     read_blackboard: TrustLevel.CONFIRM_ONCE,
     write_blackboard: TrustLevel.CONFIRM_ONCE,
+    send_message: TrustLevel.CONFIRM_ONCE,
+    check_inbox: TrustLevel.CONFIRM_ONCE,
   },
   [RiskLevel.MEDIUM]: {
     read: TrustLevel.AUTO,
@@ -113,6 +118,8 @@ export const RISK_TRUST_POLICIES: Record<RiskLevel, Record<string, TrustLevel>> 
     delegate_task: TrustLevel.AUTO,
     read_blackboard: TrustLevel.AUTO,
     write_blackboard: TrustLevel.AUTO,
+    send_message: TrustLevel.AUTO,
+    check_inbox: TrustLevel.AUTO,
   },
   [RiskLevel.HIGH]: {
     read: TrustLevel.AUTO,
@@ -131,6 +138,8 @@ export const RISK_TRUST_POLICIES: Record<RiskLevel, Record<string, TrustLevel>> 
     delegate_task: TrustLevel.AUTO,
     read_blackboard: TrustLevel.AUTO,
     write_blackboard: TrustLevel.AUTO,
+    send_message: TrustLevel.AUTO,
+    check_inbox: TrustLevel.AUTO,
   },
 };
 
@@ -165,6 +174,10 @@ export const TOOL_GROUPS: Record<string, { label: string; tools: string[] }> = {
   'Delegation': {
     label: '委派与黑板',
     tools: ['delegate_task', 'read_blackboard', 'write_blackboard'],
+  },
+  'Messaging': {
+    label: 'Agent 直连通信',
+    tools: ['send_message', 'check_inbox'],
   },
 };
 

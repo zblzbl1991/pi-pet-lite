@@ -91,6 +91,8 @@ const CHIEF_PROFILE: PetProfile = {
     'delegate_task',
     'read_blackboard',
     'write_blackboard',
+    'send_message',
+    'check_inbox',
   ],
   gifPrefix: 'apupepe',
   icon: 'apupepe-idle.gif',
@@ -105,6 +107,7 @@ const CODER_PROFILE: PetProfile = {
   toolNames: [
     'read', 'write', 'edit', 'bash', 'grep', 'find', 'ls',
     'create_directory', 'delete_file',
+    'send_message', 'check_inbox',
   ],
   icon: 'clawd-running.gif',
 };
@@ -118,6 +121,7 @@ const SCOUT_PROFILE: PetProfile = {
   toolNames: [
     'browser_action',
     'read', 'grep', 'find', 'ls',
+    'send_message', 'check_inbox',
   ],
   icon: 'ikun-review.gif',
   gifPrefix: 'ikun',
@@ -132,6 +136,7 @@ const ANALYST_PROFILE: PetProfile = {
   toolNames: [
     'read', 'grep', 'find', 'ls',
     'list_schedules',
+    'send_message', 'check_inbox',
   ],
   icon: 'clawd-waiting.gif',
 };

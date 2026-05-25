@@ -28,6 +28,7 @@ import type { SessionStore } from '../storage/session-store';
 import { createBackend } from './backends/factory';
 import type { AgentBackend, BackendEvent, BackendConfig } from './backends/types';
 import { BackendEventType } from './backends/types';
+import type { PetManager } from './pet-manager';
 
 /** Type alias for pi-agent-core thinking level */
 type PiThinkingLevel = import('@earendil-works/pi-agent-core').ThinkingLevel;
@@ -54,6 +55,31 @@ export type ConfirmationHandler = (
   toolName: string,
   args: Record<string, unknown>
 ) => Promise<boolean>;
+
+// ---------------------------------------------------------------------------
+// PetManager injection for inbox notification in system prompt
+// ---------------------------------------------------------------------------
+
+let petManagerForInbox: PetManager | null = null;
+
+/**
+ * Inject the PetManager instance so the runtime can check inbox state
+ * when building the system prompt. Called once during agent-process initialization.
+ */
+export function setPetManagerForInbox(pm: PetManager): void {
+  petManagerForInbox = pm;
+}
+
+/** Track the current petId being created (for inbox lookup) */
+let currentCreatingPetId: string = '';
+
+/**
+ * Set the petId of the agent currently being created.
+ * Called before createAgentRuntime() so the inbox check can use the correct petId.
+ */
+export function setCreatingPetId(petId: string): void {
+  currentCreatingPetId = petId;
+}
 
 /** The running agent instance and associated state */
 export interface AgentRuntime {
@@ -135,6 +161,15 @@ export async function createAgentRuntime(
         })
         .join('\n');
       systemPrompt += `\n\n**Currently available specialists:**\n${specialistList}`;
+    }
+  }
+
+  // Inject inbox notification if the pet has unread messages
+  if (petManagerForInbox && currentCreatingPetId) {
+    const summary = petManagerForInbox.getInboxSummary(currentCreatingPetId);
+    if (summary.unreadCount > 0) {
+      const senders = summary.senders.join(', ');
+      systemPrompt += `\n\n**You have ${summary.unreadCount} unread message(s) from: ${senders}. Use check_inbox to read them.**`;
     }
   }
 

@@ -94,4 +94,23 @@ Per-pet priority-based task scheduler replacing the original FIFO `TaskQueue`.
 
 ---
 
+## Architecture: Agent Direct Messaging
+
+Local agents can send messages directly to each other without Chief relaying.
+
+### Key concepts
+
+- **AgentChannel** (`src/agent/agent-channel.ts`): in-memory per-recipient inbox, max 20 messages, max 4000 chars payload
+- **Async fire-and-forget** (D1): sender never blocks; recipient replies via another `send_message`
+- **No persistence** (D2): inbox cleared on agent dispose
+- **Security** (R5): remote/A2A agents cannot be targets; offline targets rejected
+
+### Integration points
+
+- `PetManager.routeMessage()` validates target, sends via channel, emits `agent:message` EventBus event
+- `send_message` / `check_inbox` tools registered for all local profiles
+- System prompt injection notifies agents of unread messages on next prompt
+
+---
+
 **Language**: All documentation should be written in **English**.

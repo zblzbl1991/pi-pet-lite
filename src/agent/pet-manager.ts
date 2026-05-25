@@ -16,10 +16,14 @@
  * with it via MessagePort, routing messages per petId.
  */
 
-import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
+import { createAgentRuntime, setCreatingPetId, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
 import { createRemoteAgentRuntime } from './remote-runtime';
 import { TaskResult } from './task-queue';
 import { TaskScheduler, TaskPriority, ScheduledTask } from './task-scheduler';
+import { AgentChannel } from './agent-channel';
+import type { AgentMessage } from './agent-channel';
+import { setCurrentPetId } from './tools/messaging';
+import { AgentEvents, EventBus } from './event-bus';
 import { getProfileById, getProfileByRole, getDefaultProfile, getProfileIds } from './profiles';
 import {
   PET_MANAGER_MAX_CONCURRENT,
@@ -27,7 +31,6 @@ import {
   PET_MANAGER_MAX_QUEUE_DEPTH,
 } from '../shared/constants';
 import type { PetProfile, PetStatus, PetStatusReportMessage } from '../shared/types';
-import type { EventBus } from './event-bus';
 import type { SessionStore } from '../storage/session-store';
 
 // ---------------------------------------------------------------------------
@@ -102,6 +105,7 @@ export class PetManager {
   private readonly eventBus: EventBus | null;
   private readonly sessionStore: SessionStore | null;
   private taskCounter = 0;
+  private readonly agentChannel: AgentChannel;
 
   /**
    * @param onEvent - Callback for agent events forwarded to the renderer
@@ -125,6 +129,7 @@ export class PetManager {
     this.getConfirmation = getConfirmation;
     this.eventBus = eventBus ?? null;
     this.sessionStore = sessionStore ?? null;
+    this.agentChannel = new AgentChannel();
   }
 
   /**
@@ -277,6 +282,86 @@ export class PetManager {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Agent-to-Agent messaging
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Route a direct message from one agent to another.
+   *
+   * Validates the target is online and local (not A2A/remote).
+   * Sends via the AgentChannel and emits an AGENT_MESSAGE event on the EventBus.
+   *
+   * @param from - Sender petId
+   * @param to - Receiver petId or role name
+   * @param type - Message type (question, answer, notification, custom)
+   * @param payload - Message content
+   * @returns The created AgentMessage
+   * @throws Error if target is offline, remote/A2A, or payload too large
+   */
+  routeMessage(from: string, to: string, type: string, payload: string): AgentMessage {
+    // Resolve target: try as petId first, then as role
+    const targetProfile = getProfileById(to) ?? getProfileByRole(to);
+    if (!targetProfile) {
+      throw new Error(`Unknown target "${to}". No matching profile found.`);
+    }
+    const targetPetId = targetProfile.id;
+
+    // R5: Reject remote (A2A) targets
+    if (targetProfile.a2a) {
+      throw new Error(
+        `Cannot send direct message to "${to}" — remote (A2A) agents do not support direct messaging. ` +
+        'Use delegate_task through Chief instead.'
+      );
+    }
+
+    // Check target is online
+    if (!this.agents.has(targetPetId)) {
+      throw new Error(
+        `Cannot send message to "${to}" — the agent is currently offline. ` +
+        'The target must be active to receive messages.'
+      );
+    }
+
+    // Send through channel
+    const message = this.agentChannel.send({
+      from,
+      to: targetPetId,
+      type,
+      payload,
+    });
+
+    // Emit EventBus event
+    this.eventBus?.emit(AgentEvents.AGENT_MESSAGE, message);
+
+    return message;
+  }
+
+  /**
+   * Get all messages in a pet's inbox.
+   */
+  getInbox(petId: string): AgentMessage[] {
+    return this.agentChannel.getInbox(petId);
+  }
+
+  /**
+   * Mark all messages in a pet's inbox as read.
+   */
+  markInboxRead(petId: string): void {
+    this.agentChannel.markAllRead(petId);
+  }
+
+  /**
+   * Get unread message info for a pet (count and unique senders).
+   * Used for system prompt injection.
+   */
+  getInboxSummary(petId: string): { unreadCount: number; senders: string[] } {
+    return {
+      unreadCount: this.agentChannel.getUnreadCount(petId),
+      senders: this.agentChannel.getUnreadSenders(petId),
+    };
+  }
+
   /**
    * Dispose a specific pet's agent and clear its queue.
    */
@@ -298,6 +383,10 @@ export class PetManager {
     }
 
     this.clearTimer(petId);
+
+    // Clear inbox on dispose (D2: no persistence)
+    this.agentChannel.clearInbox(petId);
+
     this.emitStatusChange(petId, 'offline');
   }
 
@@ -325,6 +414,9 @@ export class PetManager {
     for (const [petId, _timer] of this.timers) {
       this.clearTimer(petId);
     }
+
+    // Clear all message inboxes
+    this.agentChannel.clearAll();
 
     // Emit offline for all known profiles
     const allProfileIds = getProfileIds();
@@ -372,6 +464,8 @@ export class PetManager {
       }
 
       console.log(`[pet-mgr] Creating ${profile.a2a ? 'REMOTE' : 'LOCAL'} runtime for ${petId}...`);
+      // Set creating petId so runtime can check inbox and tools know their pet context
+      setCreatingPetId(petId);
       const agent = profile.a2a
         ? await createRemoteAgentRuntime(this.onEvent, this.getConfirmation, profile)
         : await createAgentRuntime(
@@ -454,6 +548,9 @@ export class PetManager {
         try {
           // Reset idle timer since we're active
           this.resetIdleTimer(petId);
+
+          // Set current petId so messaging tools know who they are
+          setCurrentPetId(petId);
 
           const agentOutput = await managed.agent.prompt(task.prompt);
 

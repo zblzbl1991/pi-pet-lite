@@ -69,6 +69,8 @@ export async function getAllTools(): Promise<import('@earendil-works/pi-agent-co
     ...(await import('./browser')).buildBrowserTool(),
     // Delegation and blackboard tools (Chief coordinator)
     ...(await import('./delegate')).buildDelegateTools(),
+    // Agent-to-agent direct messaging tools
+    ...(await import('./messaging')).buildMessagingTools(),
   ];
 }
 

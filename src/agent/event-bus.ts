@@ -32,6 +32,9 @@ export const AgentEvents = {
   SESSION_CREATED: 'session:created',
   SESSION_RESTORED: 'session:restored',
   SESSION_DISPOSED: 'session:disposed',
+
+  // Agent-to-agent direct messaging
+  AGENT_MESSAGE: 'agent:message',
 } as const;
 
 // ---------------------------------------------------------------------------

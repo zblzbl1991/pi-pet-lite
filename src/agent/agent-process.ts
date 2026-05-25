@@ -19,6 +19,8 @@ import { AgentState, AgentToRendererMessage, RendererToAgentMessage, MessageRole
 import { createAgentRuntime, AgentRuntime, AgentEventCallback, ConfirmationHandler } from './runtime';
 import { PetManager } from './pet-manager';
 import { setPetManagerForDelegation } from './tools/delegate';
+import { setPetManagerForMessaging } from './tools/messaging';
+import { setPetManagerForInbox } from './runtime';
 import { setScheduleFireWithPriorityCallback } from './tools/registry';
 import { TaskPriority } from './task-scheduler';
 import { getDefaultProfile } from './profiles';
@@ -247,6 +249,12 @@ async function initPetManager(): Promise<void> {
 
   // Inject PetManager into delegation tools so delegate_task can access it
   setPetManagerForDelegation(petManager);
+
+  // Inject PetManager into messaging tools so send_message/check_inbox can access it
+  setPetManagerForMessaging(petManager);
+
+  // Inject PetManager into runtime for inbox notification in system prompts
+  setPetManagerForInbox(petManager);
 
   // Wire up scheduled tasks to use priority-aware delegation via PetManager.
   // Cron fires now route through delegateWithPriority(scheduled) so user
