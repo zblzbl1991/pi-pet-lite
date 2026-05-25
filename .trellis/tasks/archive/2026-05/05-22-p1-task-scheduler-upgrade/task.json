@@ -3,7 +3,7 @@
   "name": "05-22-p1-task-scheduler-upgrade",
   "title": "P1.2 任务调度升级",
   "description": "将 TaskQueue 从简单 FIFO 升级为支持优先级、依赖图、条件触发的调度器。支持 user-initiated > scheduled > background 优先级，task B 等待 task A 完成的依赖关系，以及 Blackboard key 变化触发任务。",
-  "status": "backlog",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": "backend",
@@ -11,7 +11,7 @@
   "creator": "zbl",
   "assignee": null,
   "createdAt": "2026-05-22",
-  "completedAt": null,
+  "completedAt": "2026-05-25",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
@@ -26,5 +26,11 @@
     "src/storage/blackboard.ts"
   ],
   "notes": "预计 Week 3。",
-  "meta": { "phase": "P1", "week": "3", "depends_on": ["05-22-p1-agent-backend-abstraction"] }
+  "meta": {
+    "phase": "P1",
+    "week": "3",
+    "depends_on": [
+      "05-22-p1-agent-backend-abstraction"
+    ]
+  }
 }
