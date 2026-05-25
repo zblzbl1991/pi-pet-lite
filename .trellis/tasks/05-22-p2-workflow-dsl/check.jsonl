@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify backend conventions"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Check quality standards"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error handling"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Check frontend compliance"}
+{"file": ".trellis/tasks/05-22-p2-workflow-dsl/prd.md", "reason": "Check all R1-R5 requirements"}

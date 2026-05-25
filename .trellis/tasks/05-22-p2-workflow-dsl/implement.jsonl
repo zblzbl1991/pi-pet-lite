@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend architecture (AgentBackend, TaskScheduler, messaging, plugins)"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "TypeScript quality and coding standards"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling for workflow parsing and execution"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Frontend component patterns for Workflows settings page"}
+{"file": ".trellis/tasks/05-22-p2-workflow-dsl/prd.md", "reason": "Requirements: YAML DSL, DAG engine, lifecycle, UI, storage"}
