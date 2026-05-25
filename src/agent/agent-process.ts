@@ -24,6 +24,7 @@ import { setPetManagerForInbox } from './runtime';
 import { setScheduleFireWithPriorityCallback } from './tools/registry';
 import { TaskPriority } from './task-scheduler';
 import { getDefaultProfile } from './profiles';
+import { loadPlugins, getPluginSummaries, enablePlugin as loaderEnablePlugin, disablePlugin as loaderDisablePlugin, installPluginFromPath, uninstallPlugin, watchForChanges } from './plugins';
 import { EventBus } from './event-bus';
 import { SessionStore } from '../storage/session-store';
 import { Tracer } from './tracer';
@@ -212,6 +213,10 @@ async function initLegacyAgent(): Promise<void> {
 async function initPetManager(): Promise<void> {
   eventBus = new EventBus();
 
+  // Load plugins before creating any agent runtimes
+  loadPlugins();
+  watchForChanges();
+
   // Initialize SessionStore for conversation persistence
   const userDataPath = process.env.CLAWD_USER_DATA;
   if (userDataPath) {
@@ -350,6 +355,46 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
 
     case 'profiles-updated': {
       handleProfilesUpdated();
+      break;
+    }
+
+    case 'plugin-list': {
+      const plugins = getPluginSummaries();
+      sendToRenderer({ type: 'plugin-list-response', plugins });
+      break;
+    }
+
+    case 'plugin-enable': {
+      const success = loaderEnablePlugin(msg.name);
+      sendToRenderer({ type: 'plugin-enable-response', name: msg.name, success });
+      break;
+    }
+
+    case 'plugin-disable': {
+      const success = loaderDisablePlugin(msg.name);
+      sendToRenderer({ type: 'plugin-disable-response', name: msg.name, success });
+      break;
+    }
+
+    case 'plugin-install': {
+      const result = installPluginFromPath(msg.sourcePath);
+      sendToRenderer({
+        type: 'plugin-install-response',
+        success: result.success,
+        name: result.name,
+        error: result.error,
+      });
+      break;
+    }
+
+    case 'plugin-uninstall': {
+      const result = uninstallPlugin(msg.name);
+      sendToRenderer({
+        type: 'plugin-uninstall-response',
+        name: msg.name,
+        success: result.success,
+        error: result.error,
+      });
       break;
     }
 

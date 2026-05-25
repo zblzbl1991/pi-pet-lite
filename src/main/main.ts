@@ -32,6 +32,11 @@ import {
   IPC_QUICK_INPUT_CANCEL,
   IPC_CHAT_SLIDE_OUT_COMPLETE,
   MESSAGE_BUFFER_MAX,
+  IPC_PLUGIN_LIST,
+  IPC_PLUGIN_ENABLE,
+  IPC_PLUGIN_DISABLE,
+  IPC_PLUGIN_INSTALL,
+  IPC_PLUGIN_UNINSTALL,
 } from '../shared/constants';
 import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig, updateRiskLevel, updateProfilesConfig, resetProfilesConfig } from '../config/config-store';
 import { registerBlackboardIpcHandlers } from './blackboard-ipc';
@@ -47,6 +52,7 @@ import type {
   PetProfile,
   AgentToRendererMessage,
   RendererToAgentMessage,
+  PluginSummary,
 } from '../shared/types';
 import { getDefaultProfile, getProfileById } from '../agent/profiles';
 
@@ -808,6 +814,137 @@ function bootstrap(): void {
         }
       }
     });
+
+    // ---- Plugin management IPC handlers ----
+    // These relay plugin operations to the agent process via MessagePort
+    // and resolve when the agent sends back the corresponding response.
+
+    /** Pending plugin request promises keyed by response type prefix */
+    const pendingPluginRequests = new Map<string, {
+      resolve: (value: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }>();
+
+    function relayPluginRequest<T>(msg: RendererToAgentMessage, responsePrefix: string, timeoutMs = 10000): Promise<T> {
+      return new Promise<T>((resolve) => {
+        const key = responsePrefix;
+        // Clear any previous pending request of the same type
+        const existing = pendingPluginRequests.get(key);
+        if (existing) {
+          clearTimeout(existing.timer);
+          pendingPluginRequests.delete(key);
+        }
+
+        const timer = setTimeout(() => {
+          pendingPluginRequests.delete(key);
+          resolve({ success: false, error: 'Request timed out' } as unknown as T);
+        }, timeoutMs);
+
+        pendingPluginRequests.set(key, { resolve: resolve as (value: unknown) => void, timer });
+        mainPort.postMessage(msg);
+      });
+    }
+
+    // Handle plugin responses from agent process.
+    // MessagePortMain supports multiple 'message' listeners, so we add a second
+    // one dedicated to plugin response routing alongside the existing handler.
+    const _pluginResponseHandler = (msg: AgentToRendererMessage): boolean => {
+      switch (msg.type) {
+        case 'plugin-list-response': {
+          const pending = pendingPluginRequests.get('plugin-list');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingPluginRequests.delete('plugin-list');
+            pending.resolve(msg.plugins);
+          }
+          return true;
+        }
+        case 'plugin-enable-response': {
+          const pending = pendingPluginRequests.get('plugin-enable');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingPluginRequests.delete('plugin-enable');
+            pending.resolve({ success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'plugin-disable-response': {
+          const pending = pendingPluginRequests.get('plugin-disable');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingPluginRequests.delete('plugin-disable');
+            pending.resolve({ success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'plugin-install-response': {
+          const pending = pendingPluginRequests.get('plugin-install');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingPluginRequests.delete('plugin-install');
+            pending.resolve({ success: msg.success, name: msg.name, error: msg.error });
+          }
+          return true;
+        }
+        case 'plugin-uninstall-response': {
+          const pending = pendingPluginRequests.get('plugin-uninstall');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingPluginRequests.delete('plugin-uninstall');
+            pending.resolve({ success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        default:
+          return false;
+      }
+    };
+
+    // Register plugin response handler as a second listener on the MessagePort.
+    mainPort.on('message', (event: unknown) => {
+      const msg = (event as { data: AgentToRendererMessage }).data;
+      _pluginResponseHandler(msg);
+    });
+
+    ipcMain.handle(IPC_PLUGIN_LIST, async (): Promise<PluginSummary[]> => {
+      return relayPluginRequest<PluginSummary[]>({ type: 'plugin-list' }, 'plugin-list');
+    });
+
+    ipcMain.handle(
+      IPC_PLUGIN_ENABLE,
+      async (_event: Electron.IpcMainInvokeEvent, name: string) => {
+        return relayPluginRequest<{ success: boolean; error?: string }>(
+          { type: 'plugin-enable', name }, 'plugin-enable'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_PLUGIN_DISABLE,
+      async (_event: Electron.IpcMainInvokeEvent, name: string) => {
+        return relayPluginRequest<{ success: boolean; error?: string }>(
+          { type: 'plugin-disable', name }, 'plugin-disable'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_PLUGIN_INSTALL,
+      async (_event: Electron.IpcMainInvokeEvent, sourcePath: string) => {
+        return relayPluginRequest<{ success: boolean; name?: string; error?: string }>(
+          { type: 'plugin-install', sourcePath }, 'plugin-install', 30000
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_PLUGIN_UNINSTALL,
+      async (_event: Electron.IpcMainInvokeEvent, name: string) => {
+        return relayPluginRequest<{ success: boolean; error?: string }>(
+          { type: 'plugin-uninstall', name }, 'plugin-uninstall'
+        );
+      }
+    );
 
     app.on('window-all-closed', () => {
       // App continues running in system tray

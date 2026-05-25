@@ -30,6 +30,11 @@ src/
 │   │   ├── types.ts         # AgentBackend interface, BackendEvent, BackendConfig
 │   │   ├── pi-agent-backend.ts  # Default backend wrapping pi-agent-core
 │   │   └── factory.ts       # createBackend() factory function
+│   ├── plugins/             # Plugin system (community tools)
+│   │   ├── types.ts         # ToolPlugin, PluginManifest, ToolContext interfaces
+│   │   ├── loader.ts        # Directory scanner, load/unload, hot reload
+│   │   ├── adapters.ts      # ToolPlugin → AgentTool conversion
+│   │   └── index.ts         # Barrel export
 │   └── tools/               # Agent tools
 │       ├── registry.ts      # Central tool registry
 │       ├── browser.ts       # Browser automation tool

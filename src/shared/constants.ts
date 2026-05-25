@@ -179,6 +179,10 @@ export const TOOL_GROUPS: Record<string, { label: string; tools: string[] }> = {
     label: 'Agent 直连通信',
     tools: ['send_message', 'check_inbox'],
   },
+  'Plugins': {
+    label: '插件工具',
+    tools: [], // Populated at runtime from loaded plugins
+  },
 };
 
 /** Default system prompt for newly created custom profiles */
@@ -250,3 +254,10 @@ export const IPC_PET_ABORT = 'pet:abort';
 export const IPC_PET_STATUS_UPDATE = 'pet:status-update';
 export const IPC_PET_CONFIG = 'pet:config';
 export const IPC_PET_TOOLTIP = 'pet:tooltip';
+
+/** IPC channels for plugin management (main <-> renderer <-> agent) */
+export const IPC_PLUGIN_LIST = 'plugin:list';
+export const IPC_PLUGIN_ENABLE = 'plugin:enable';
+export const IPC_PLUGIN_DISABLE = 'plugin:disable';
+export const IPC_PLUGIN_INSTALL = 'plugin:install';
+export const IPC_PLUGIN_UNINSTALL = 'plugin:uninstall';

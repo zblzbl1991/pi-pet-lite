@@ -18,7 +18,7 @@ import {
   RefreshCw,
   Link,
 } from 'lucide-react';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole, AgentCardInfo } from '../../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole, AgentCardInfo, PluginSummary } from '../../shared/types';
 import { TOOL_GROUPS, CUSTOM_PROFILE_DEFAULT_PROMPT, CUSTOM_PROFILE_DEFAULT_TOOLS } from '../../shared/constants';
 
 /** Provider option with display label and available models */
@@ -92,7 +92,7 @@ const PROVIDERS: ProviderOption[] = [
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
 /** Sidebar navigation sections */
-type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets';
+type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets' | 'plugins';
 
 const sharedStyles: Record<string, React.CSSProperties> = {
   label: {
@@ -1137,6 +1137,275 @@ function ProfilesSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Plugins Section — Plugin management
+// ---------------------------------------------------------------------------
+
+function PluginsSection() {
+  const [plugins, setPlugins] = useState<PluginSummary[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [installPath, setInstallPath] = useState('');
+  const [showInstallForm, setShowInstallForm] = useState(false);
+  const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null);
+
+  const loadPlugins = useCallback(async () => {
+    if (!window.settingsAPI?.listPlugins) return;
+    try {
+      const list = await window.settingsAPI.listPlugins();
+      setPlugins(list ?? []);
+    } catch {
+      // Plugin API not available
+    }
+    setHasLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    loadPlugins();
+  }, [loadPlugins]);
+
+  const handleToggle = useCallback(async (name: string, currentlyEnabled: boolean) => {
+    setSaveMessage('');
+    try {
+      if (currentlyEnabled) {
+        const result = await window.settingsAPI?.disablePlugin?.(name);
+        if (!result?.success) {
+          setSaveMessage(result?.error ?? '禁用失败');
+          setTimeout(() => setSaveMessage(''), 3000);
+          return;
+        }
+      } else {
+        const result = await window.settingsAPI?.enablePlugin?.(name);
+        if (!result?.success) {
+          setSaveMessage(result?.error ?? '启用失败');
+          setTimeout(() => setSaveMessage(''), 3000);
+          return;
+        }
+      }
+      await loadPlugins();
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : '操作失败');
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  }, [loadPlugins]);
+
+  const handleInstall = useCallback(async () => {
+    if (!installPath.trim()) return;
+    setSaveMessage('正在安装...');
+    try {
+      const result = await window.settingsAPI?.installPlugin?.(installPath.trim());
+      if (result?.success) {
+        setSaveMessage(`插件 "${result.name}" 安装成功`);
+        setInstallPath('');
+        setShowInstallForm(false);
+        await loadPlugins();
+      } else {
+        setSaveMessage(result?.error ?? '安装失败');
+      }
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : '安装失败');
+    }
+    setTimeout(() => setSaveMessage(''), 3000);
+  }, [installPath, loadPlugins]);
+
+  const handleUninstall = useCallback(async (name: string) => {
+    setSaveMessage('');
+    try {
+      const result = await window.settingsAPI?.uninstallPlugin?.(name);
+      if (result?.success) {
+        setSaveMessage(`插件 "${name}" 已卸载`);
+        setConfirmUninstall(null);
+        await loadPlugins();
+      } else {
+        setSaveMessage(result?.error ?? '卸载失败');
+      }
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : '卸载失败');
+    }
+    setTimeout(() => setSaveMessage(''), 3000);
+  }, [loadPlugins]);
+
+  if (!hasLoaded) {
+    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>加载中...</div>;
+  }
+
+  return (
+    <>
+      <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
+        插件
+      </div>
+
+      {plugins.length === 0 && !showInstallForm && (
+        <div style={{
+          padding: 'var(--space-6)', textAlign: 'center',
+          background: 'var(--bg-elevated)', borderRadius: 'var(--radius-nav)',
+          border: `1px solid var(--border-subtle)`,
+        }}>
+          <div style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+            暂无已安装的插件
+          </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-4)' }}>
+            将插件放入 ~/.clawd/plugins/ 目录或从本地路径安装。
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+        {plugins.map((plugin) => (
+          <div key={plugin.name} style={{
+            padding: 'var(--space-3) var(--space-4)',
+            borderRadius: 'var(--radius-nav)',
+            border: `1.5px solid ${plugin.enabled ? 'var(--success)' : 'var(--border-subtle)'}`,
+            background: plugin.enabled ? 'var(--success-bg)' : 'var(--bg-elevated)',
+            opacity: plugin.enabled ? 1 : 0.6,
+            transition: 'all var(--duration-fast)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <Plug size={14} strokeWidth={1.5} style={{ color: plugin.enabled ? 'var(--success)' : 'var(--text-tertiary)', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>
+                    {plugin.displayName}
+                  </span>
+                  {plugin.version && (
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      v{plugin.version}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {plugin.description}
+                  {plugin.author && <span> -- {plugin.author}</span>}
+                </div>
+                {plugin.permissions.length > 0 && (
+                  <div style={{ display: 'flex', gap: 'var(--space-1)', marginTop: 'var(--space-1)' }}>
+                    {plugin.permissions.map((perm) => (
+                      <span key={perm} style={{
+                        fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-sm)',
+                        background: 'var(--warning-bg)', color: 'var(--warning)',
+                      }}>
+                        {perm}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => handleToggle(plugin.name, plugin.enabled)}
+                style={{
+                  padding: 'var(--space-1) var(--space-3)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 'var(--font-medium)',
+                  cursor: 'pointer',
+                  background: plugin.enabled ? 'var(--warning-bg)' : 'var(--success-bg)',
+                  color: plugin.enabled ? 'var(--warning)' : 'var(--success)',
+                  fontFamily: 'inherit',
+                  transition: 'all var(--duration-fast)',
+                  flexShrink: 0,
+                }}
+              >
+                {plugin.enabled ? '禁用' : '启用'}
+              </button>
+              <button
+                onClick={() => setConfirmUninstall(plugin.name)}
+                style={{
+                  background: 'none', border: 'none', color: 'var(--danger)',
+                  cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)',
+                  opacity: 0.6, display: 'flex', alignItems: 'center',
+                }}
+              >
+                <Trash2 size={12} strokeWidth={1.5} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Install form */}
+      {showInstallForm ? (
+        <div style={{
+          padding: 'var(--space-4)', borderRadius: 'var(--radius-nav)',
+          border: `1.5px dashed var(--brand)50`, background: 'var(--brand-glow)',
+        }}>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
+            从本地路径安装
+          </div>
+          <div style={sharedStyles.field}>
+            <label style={sharedStyles.label}>插件目录路径</label>
+            <input type="text" value={installPath}
+              onChange={(e) => setInstallPath(e.target.value)}
+              placeholder="C:\path\to\plugin-directory" style={sharedStyles.input} />
+            <div style={sharedStyles.hint}>目录必须包含 plugin.json 和入口 JS 文件。</div>
+          </div>
+          <div style={{ ...sharedStyles.btnRow, marginTop: 'var(--space-3)' }}>
+            <button onClick={handleInstall} disabled={!installPath.trim()}
+              style={{
+                ...sharedStyles.btn, ...sharedStyles.btnSave,
+                opacity: installPath.trim() ? 1 : 0.4,
+                cursor: installPath.trim() ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              }}>
+              <Save size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 安装
+            </button>
+            <button onClick={() => { setShowInstallForm(false); setInstallPath(''); }}
+              style={{ ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+              <X size={14} strokeWidth={1.5} /> 取消
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShowInstallForm(true)} style={{
+          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-nav)', border: `1.5px dashed var(--border)`,
+          background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer',
+          fontSize: 'var(--text-xs)', fontWeight: 'var(--font-medium)', textAlign: 'center',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)', width: '100%',
+        }}>
+          <Plus size={14} strokeWidth={1.5} /> 从本地路径安装插件
+        </button>
+      )}
+
+      <SaveStatus message={saveMessage} />
+
+      {/* Uninstall confirmation dialog */}
+      {confirmUninstall && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: 360,
+            border: `1px solid var(--border)`,
+          }}>
+            <div style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
+              卸载插件 "{confirmUninstall}"？
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: 'var(--space-5)' }}>
+              此操作将永久删除该插件及其所有文件，无法撤销。
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmUninstall(null)} style={{
+                ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              }}>
+                <X size={14} strokeWidth={1.5} /> 取消
+              </button>
+              <button onClick={() => handleUninstall(confirmUninstall)} style={{
+                ...sharedStyles.btn, background: 'var(--danger)', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              }}>
+                <Trash2 size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 卸载
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main settings window with sidebar navigation
 // ---------------------------------------------------------------------------
 
@@ -1149,6 +1418,7 @@ export const SettingsWindow: React.FC = () => {
     { key: 'notifications', label: '通知', icon: <Bell size={16} strokeWidth={1.5} /> },
     { key: 'permissions', label: '权限', icon: <Shield size={16} strokeWidth={1.5} /> },
     { key: 'pets', label: '宠物', icon: <Bot size={16} strokeWidth={1.5} /> },
+    { key: 'plugins', label: '插件', icon: <Plug size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -1208,6 +1478,7 @@ export const SettingsWindow: React.FC = () => {
           {section === 'notifications' && <NotificationsSection />}
           {section === 'permissions' && <PermissionsSection />}
           {section === 'pets' && <ProfilesSection />}
+          {section === 'plugins' && <PluginsSection />}
         </div>
       </div>
 

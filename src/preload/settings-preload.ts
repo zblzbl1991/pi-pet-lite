@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile } from '../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile, PluginSummary } from '../shared/types';
 
 /**
  * Preload script for the settings BrowserWindow.
@@ -90,6 +90,40 @@ const api = {
 
   resetProfiles(): Promise<{ success: boolean; error?: string }> {
     return ipcRenderer.invoke('settings:reset-profiles') as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  // Plugin management IPC
+  listPlugins(): Promise<PluginSummary[]> {
+    return ipcRenderer.invoke('plugin:list') as Promise<PluginSummary[]>;
+  },
+
+  enablePlugin(name: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('plugin:enable', name) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  disablePlugin(name: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('plugin:disable', name) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  installPlugin(sourcePath: string): Promise<{ success: boolean; name?: string; error?: string }> {
+    return ipcRenderer.invoke('plugin:install', sourcePath) as Promise<{
+      success: boolean;
+      name?: string;
+      error?: string;
+    }>;
+  },
+
+  uninstallPlugin(name: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('plugin:uninstall', name) as Promise<{
       success: boolean;
       error?: string;
     }>;

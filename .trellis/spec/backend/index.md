@@ -113,4 +113,37 @@ Local agents can send messages directly to each other without Chief relaying.
 
 ---
 
+## Architecture: Plugin System
+
+Community and user-contributed tools loaded from `~/.clawd/plugins/`.
+
+### Key concepts
+
+- **ToolPlugin interface**: name, displayName, description, parameters (simplified JSON Schema), execute()
+- **PluginManifest** (`plugin.json`): metadata, permissions, timeout, entry point
+- **CommonJS loading** (D1): `require()` — no compilation step
+- **Trust model** (D2): declarative permissions, no VM sandbox for MVP
+- **Hot reload**: `fs.watch` on plugins directory
+
+### Plugin lifecycle
+
+1. App starts → `loadPlugins()` scans `~/.clawd/plugins/*/plugin.json`
+2. Each plugin validated (required fields, has `execute()`) and loaded via `require()`
+3. `pluginToAgentTool()` adapter converts to `AgentTool` with TypeBox schema + timeout
+4. `getAllTools()` appends enabled plugins after built-in tools
+5. `getToolsForProfile()` filters by `profile.toolNames` (plugins work identically to built-in tools)
+
+### IPC bridge
+
+Renderer → Main (IPC) → Agent process (MessagePort) → Plugin loader. Plugin list, enable/disable, install/uninstall all route through this bridge.
+
+### Adding a new plugin
+
+1. Create directory `~/.clawd/plugins/<name>/`
+2. Add `plugin.json` manifest
+3. Add `index.js` exporting `{ name, displayName, description, parameters, execute }`
+4. Restart or wait for hot reload
+
+---
+
 **Language**: All documentation should be written in **English**.

@@ -217,7 +217,12 @@ export type RendererToAgentMessage =
   | { type: 'pet-delegate'; petId: string; prompt: string }
   | { type: 'pet-abort'; petId: string }
   | { type: 'pet-status-request' }
-  | { type: 'profiles-updated' };
+  | { type: 'profiles-updated' }
+  | { type: 'plugin-list' }
+  | { type: 'plugin-enable'; name: string }
+  | { type: 'plugin-disable'; name: string }
+  | { type: 'plugin-install'; sourcePath: string }
+  | { type: 'plugin-uninstall'; name: string };
 
 /** Messages sent from agent to renderer via MessagePort */
 export type AgentToRendererMessage =
@@ -232,7 +237,12 @@ export type AgentToRendererMessage =
   | { type: 'turn-indicator'; turn: number; event: 'start' | 'end' }
   | { type: 'error'; message: string }
   | { type: 'pet-status'; petId: string; status: PetStatus }
-  | { type: 'pet-statuses'; statuses: PetStatusReportMessage[] };
+  | { type: 'pet-statuses'; statuses: PetStatusReportMessage[] }
+  | { type: 'plugin-list-response'; plugins: PluginSummary[] }
+  | { type: 'plugin-enable-response'; name: string; success: boolean; error?: string }
+  | { type: 'plugin-disable-response'; name: string; success: boolean; error?: string }
+  | { type: 'plugin-install-response'; success: boolean; name?: string; error?: string }
+  | { type: 'plugin-uninstall-response'; name: string; success: boolean; error?: string };
 
 /** Pet status report for IPC communication */
 export interface PetStatusReportMessage {
@@ -330,4 +340,15 @@ export interface BlackboardIPC {
   delete(namespace: string, key: string): Promise<BlackboardResponse<boolean>>;
   list(namespace: string, prefix?: string): Promise<BlackboardResponse<BlackboardEntryItem[]>>;
   query(namespace: string, filter: Record<string, unknown>): Promise<BlackboardResponse<BlackboardEntryItem[]>>;
+}
+
+/** Summary of a plugin for IPC communication to the renderer */
+export interface PluginSummary {
+  name: string;
+  displayName: string;
+  description: string;
+  version: string;
+  author: string;
+  enabled: boolean;
+  permissions: string[];
 }

@@ -50,7 +50,7 @@ export async function getAllTools(): Promise<import('@earendil-works/pi-agent-co
   // pi's tools resolve relative paths against this cwd.
   const cwd = process.cwd();
 
-  return [
+  const builtInTools = [
     // pi-coding-agent tools: read, bash, edit, write
     ...piTools.createCodingTools(cwd),
     // pi-coding-agent read-only tools: grep, find, ls
@@ -72,6 +72,12 @@ export async function getAllTools(): Promise<import('@earendil-works/pi-agent-co
     // Agent-to-agent direct messaging tools
     ...(await import('./messaging')).buildMessagingTools(),
   ];
+
+  // Append enabled plugin tools
+  const { getEnabledPlugins, pluginsToAgentTools } = await import('../plugins');
+  const pluginTools = pluginsToAgentTools(getEnabledPlugins());
+
+  return [...builtInTools, ...pluginTools];
 }
 
 /**
@@ -87,6 +93,20 @@ export const PI_TOOL_NAMES = [
   'find',
   'ls',
 ] as const;
+
+/**
+ * Returns the names of all currently enabled plugin tools.
+ * Used for trust policy mapping and profile tool filtering.
+ */
+export function getPluginToolNames(): string[] {
+  try {
+    // Synchronous access: getEnabledPlugins() reads from an in-memory Map
+    const { getEnabledPlugins } = require('../plugins') as typeof import('../plugins');
+    return getEnabledPlugins().map((lp) => lp.plugin.name);
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Returns only the tools that match the profile's toolNames allowlist.

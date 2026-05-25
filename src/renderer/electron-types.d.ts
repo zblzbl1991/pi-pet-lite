@@ -17,6 +17,7 @@ import type {
   QuickInputElectronAPI,
   PetConfig,
   PetStatusUpdateData,
+  PluginSummary,
 } from '../shared/types';
 
 /**
@@ -36,6 +37,11 @@ export interface SettingsElectronAPI {
   loadProfiles: () => Promise<PetProfile[]>;
   saveProfiles: (profiles: PetProfile[]) => Promise<{ success: boolean; error?: string }>;
   resetProfiles: () => Promise<{ success: boolean; error?: string }>;
+  listPlugins: () => Promise<PluginSummary[]>;
+  enablePlugin: (name: string) => Promise<{ success: boolean; error?: string }>;
+  disablePlugin: (name: string) => Promise<{ success: boolean; error?: string }>;
+  installPlugin: (sourcePath: string) => Promise<{ success: boolean; name?: string; error?: string }>;
+  uninstallPlugin: (name: string) => Promise<{ success: boolean; error?: string }>;
   closeWindow: () => void;
 }
 
