@@ -11,13 +11,17 @@
   "creator": "zbl",
   "assignee": "zbl",
   "createdAt": "2026-05-22",
-  "completedAt": "2026-05-22",
+  "completedAt": "2026-05-25",
   "branch": null,
   "base_branch": "master",
   "worktree_path": null,
   "commit": null,
   "pr_url": null,
-  "subtasks": ["event-bus", "session-store", "tracer"],
+  "subtasks": [
+    "event-bus",
+    "session-store",
+    "tracer"
+  ],
   "children": [],
   "parent": "agent-runtime-evolution",
   "relatedFiles": [
