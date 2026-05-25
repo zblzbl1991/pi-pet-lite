@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
+- **Total Sessions**: 11
 - **Last Active**: 2026-05-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~354 | Active |
+| `journal-1.md` | ~392 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-05-25 | P1.1-1.3: Agent Backend + TaskScheduler + Direct Messaging | `320873d`, `d148ecb`, `9257810`, `aee31ea`, `fef16b0`, `ab4738b` | `master` |
 | 10 | 2026-05-25 | P1.1 + P1.2: Agent Backend 抽象层 + TaskScheduler 升级 | `320873d`, `d148ecb`, `9257810`, `aee31ea` | `master` |
 | 9 | 2026-05-25 | P1.1 Agent Backend 抽象层 | `320873d`, `d148ecb` | `master` |
 | 8 | 2026-05-21 | A2A remote agent integration + hot-reload specialist list | `3b2ba4f`, `170f2c7` | `master` |

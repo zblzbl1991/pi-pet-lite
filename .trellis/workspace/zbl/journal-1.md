@@ -352,3 +352,41 @@ Integrate A2A remote agent support with pet team management; add hot-reload Chie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: P1.1-1.3: Agent Backend + TaskScheduler + Direct Messaging
+
+**Date**: 2026-05-25
+**Task**: P1.1-1.3: Agent Backend + TaskScheduler + Direct Messaging
+**Branch**: `master`
+
+### Summary
+
+完成全部 P1 任务。P1.1 AgentBackend 接口抽象 pi-agent-core；P1.2 TaskScheduler 优先级调度+依赖链+Blackboard watcher；P1.3 Agent 直连通信(in-memory inbox, send_message/check_inbox 工具, EventBus agent:message 路由)。P1 阶段全部交付。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `320873d` | (see git log) |
+| `d148ecb` | (see git log) |
+| `9257810` | (see git log) |
+| `aee31ea` | (see git log) |
+| `fef16b0` | (see git log) |
+| `ab4738b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
