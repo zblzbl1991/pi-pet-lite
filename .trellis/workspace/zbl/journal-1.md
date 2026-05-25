@@ -316,3 +316,39 @@ Integrate A2A remote agent support with pet team management; add hot-reload Chie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: P1.1 + P1.2: Agent Backend 抽象层 + TaskScheduler 升级
+
+**Date**: 2026-05-25
+**Task**: P1.1 + P1.2: Agent Backend 抽象层 + TaskScheduler 升级
+**Branch**: `master`
+
+### Summary
+
+完成两个 P1 任务。P1.1 引入 AgentBackend 接口抽象 pi-agent-core 依赖，新增 backends/ 目录。P1.2 升级 TaskQueue 为优先级调度器，支持 critical/user/scheduled/background 优先级、任务依赖链、Blackboard watcher 触发。用户直接输入使用 critical 优先级，cron 使用 scheduled。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `320873d` | (see git log) |
+| `d148ecb` | (see git log) |
+| `9257810` | (see git log) |
+| `aee31ea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
