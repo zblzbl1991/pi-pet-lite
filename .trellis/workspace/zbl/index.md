@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-05-25
+- **Total Sessions**: 15
+- **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~518 | Active |
+| `journal-1.md` | ~551 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-05-27 | P3.4 Trace 可视化调试 UI | `efbdc48` | `master` |
 | 14 | 2026-05-25 | P1 + P2 全部 6 任务: Agent Runtime 演进路线 P1-P2 交付 | `320873d`, `d148ecb`, `9257810`, `aee31ea`, `fef16b0`, `ab4738b`, `c7dcb21`, `ef7a963`, `f5cb5a5`, `b1a0910`, `6ab7a35`, `fe93257` | `master` |
 | 13 | 2026-05-25 | P1 + P2.1-P2.2: Agent Runtime 全部 P1 + Plugin + Session | `320873d`, `d148ecb`, `9257810`, `aee31ea`, `fef16b0`, `ab4738b`, `c7dcb21`, `ef7a963`, `f5cb5a5`, `b1a0910` | `master` |
 | 12 | 2026-05-25 | P1 全部 + P2.1: Backend 抽象 + 调度器 + 消息 + Plugin API | `320873d`, `d148ecb`, `9257810`, `aee31ea`, `fef16b0`, `ab4738b`, `c7dcb21`, `ef7a963` | `master` |

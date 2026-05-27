@@ -516,3 +516,36 @@ Integrate A2A remote agent support with pet team management; add hot-reload Chie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: P3.4 Trace 可视化调试 UI
+
+**Date**: 2026-05-27
+**Task**: P3.4 Trace 可视化调试 UI
+**Branch**: `master`
+
+### Summary
+
+实现 Settings Traces tab：Tracer 查询 API、IPC 通道（MessagePort relay）、列表页（筛选+无限滚动+实时推送）、详情页（SVG 瀑布图+span 面板）。12 个文件变更，+1195 行。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `efbdc48` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
