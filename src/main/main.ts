@@ -16,6 +16,7 @@ import {
   getSettingsHtmlPath,
   getChatHtmlPath,
   getChatWindow,
+  getSettingsWindow,
   createQuickInputWindow,
   closeQuickInputWindow,
   getQuickInputHtmlPath,
@@ -44,6 +45,9 @@ import {
   IPC_WORKFLOW_CANCEL,
   IPC_WORKFLOW_STATUS,
   IPC_WORKFLOW_HISTORY,
+  IPC_TRACE_LIST,
+  IPC_TRACE_DETAIL,
+  IPC_TRACE_COMPLETED,
 } from '../shared/constants';
 import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig, updateRiskLevel, updateProfilesConfig, resetProfilesConfig } from '../config/config-store';
 import { registerBlackboardIpcHandlers } from './blackboard-ipc';
@@ -62,6 +66,9 @@ import type {
   PluginSummary,
   WorkflowDefinition,
   WorkflowRunSnapshot,
+  TraceRow,
+  Trace,
+  Span,
 } from '../shared/types';
 import { getDefaultProfile, getProfileById } from '../agent/profiles';
 
@@ -1114,6 +1121,93 @@ function bootstrap(): void {
         { type: 'workflow:history' }, 'workflow-history'
       );
     });
+
+    // ---- Trace IPC handlers ----
+    // Relay trace queries to the agent process and forward trace-completed
+    // events to the settings window for real-time updates.
+
+    /** Pending trace request promises keyed by response type */
+    const pendingTraceRequests = new Map<string, {
+      resolve: (value: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }>();
+
+    function relayTraceRequest<T>(msg: RendererToAgentMessage, responsePrefix: string, timeoutMs = 10000): Promise<T> {
+      return new Promise<T>((resolve) => {
+        const key = responsePrefix;
+        const existing = pendingTraceRequests.get(key);
+        if (existing) {
+          clearTimeout(existing.timer);
+          pendingTraceRequests.delete(key);
+        }
+
+        const timer = setTimeout(() => {
+          pendingTraceRequests.delete(key);
+          resolve({ traces: [], total: 0 } as unknown as T);
+        }, timeoutMs);
+
+        pendingTraceRequests.set(key, { resolve: resolve as (value: unknown) => void, timer });
+        mainPort.postMessage(msg);
+      });
+    }
+
+    // Handle trace responses from agent process.
+    const _traceResponseHandler = (msg: AgentToRendererMessage): boolean => {
+      switch (msg.type) {
+        case 'trace-list-response': {
+          const pending = pendingTraceRequests.get('trace-list');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingTraceRequests.delete('trace-list');
+            pending.resolve({ traces: msg.traces, total: msg.total });
+          }
+          return true;
+        }
+        case 'trace-detail-response': {
+          const pending = pendingTraceRequests.get('trace-detail');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingTraceRequests.delete('trace-detail');
+            pending.resolve({ detail: msg.detail });
+          }
+          return true;
+        }
+        case 'trace-completed': {
+          // Forward to settings window for real-time notification
+          const settingsWin = getSettingsWindow();
+          if (settingsWin) {
+            settingsWin.webContents.send(IPC_TRACE_COMPLETED, { traceId: msg.traceId, status: msg.status });
+          }
+          return true;
+        }
+        default:
+          return false;
+      }
+    };
+
+    // Register trace response handler as another listener on the MessagePort.
+    mainPort.on('message', (event: unknown) => {
+      const msg = (event as { data: AgentToRendererMessage }).data;
+      _traceResponseHandler(msg);
+    });
+
+    ipcMain.handle(
+      IPC_TRACE_LIST,
+      async (_event: Electron.IpcMainInvokeEvent, options: { offset: number; limit: number; status?: string; petId?: string }) => {
+        return relayTraceRequest<{ traces: TraceRow[]; total: number }>(
+          { type: 'trace:list', ...options }, 'trace-list'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_TRACE_DETAIL,
+      async (_event: Electron.IpcMainInvokeEvent, traceId: string) => {
+        return relayTraceRequest<{ detail: { trace: Trace; spans: Span[] } | null }>(
+          { type: 'trace:detail', traceId }, 'trace-detail'
+        );
+      }
+    );
 
     app.on('window-all-closed', () => {
       // App continues running in system tray

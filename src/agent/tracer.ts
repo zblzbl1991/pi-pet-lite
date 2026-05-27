@@ -16,7 +16,7 @@ import BetterSqlite3 from 'better-sqlite3';
 // Types
 // ---------------------------------------------------------------------------
 
-interface Trace {
+export interface Trace {
   id: string;
   sessionId: string | null;
   petId: string | null;
@@ -26,7 +26,7 @@ interface Trace {
   attributes: Record<string, unknown>;
 }
 
-interface Span {
+export interface Span {
   id: string;
   traceId: string;
   name: string;
@@ -34,6 +34,16 @@ interface Span {
   endTime: number | null;
   status: 'running' | 'ok' | 'error';
   attributes: Record<string, unknown>;
+}
+
+export interface TraceRow {
+  id: string;
+  session_id: string | null;
+  pet_id: string | null;
+  start_time: number;
+  end_time: number | null;
+  status: string;
+  span_count: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +67,9 @@ export class Tracer {
   private stmtInsertTrace: BetterSqlite3.Statement | null = null;
   private stmtInsertSpan: BetterSqlite3.Statement | null = null;
   private stmtDeleteOldTraces: BetterSqlite3.Statement | null = null;
+  private stmtGetTraceById: BetterSqlite3.Statement | null = null;
+  private stmtGetSpansByTraceId: BetterSqlite3.Statement | null = null;
+  private stmtCountTraces: BetterSqlite3.Statement | null = null;
 
   constructor(db: BetterSqlite3.Database, eventBus: EventBus) {
     this.db = db;
@@ -119,6 +132,15 @@ export class Tracer {
     );
     this.stmtDeleteOldTraces = this.db.prepare(
       `DELETE FROM traces WHERE start_time < ?`
+    );
+    this.stmtGetTraceById = this.db.prepare(
+      `SELECT * FROM traces WHERE id = ?`
+    );
+    this.stmtGetSpansByTraceId = this.db.prepare(
+      `SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time ASC`
+    );
+    this.stmtCountTraces = this.db.prepare(
+      `SELECT COUNT(*) as total FROM traces WHERE 1=1`
     );
   }
 
@@ -226,6 +248,7 @@ export class Tracer {
         }
       });
       tx();
+      this.eventBus.emit(AgentEvents.TRACE_COMPLETED, { traceId: this.activeTrace!.id, status });
     } catch (err) {
       console.error('[tracer] Failed to flush trace:', err);
     }
@@ -288,6 +311,75 @@ export class Tracer {
    */
   getActiveTraceId(): string | null {
     return this.activeTrace?.id ?? null;
+  }
+
+  listTraces(options: {
+    offset: number;
+    limit: number;
+    status?: string;
+    petId?: string;
+  }): { traces: TraceRow[]; total: number } {
+    if (!this.db) return { traces: [], total: 0 };
+
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+
+    if (options.status) {
+      conditions.push('t.status = ?');
+      params.push(options.status);
+    }
+    if (options.petId) {
+      conditions.push('t.pet_id = ?');
+      params.push(options.petId);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countRow = this.db.prepare(
+      `SELECT COUNT(*) as total FROM traces t ${where}`
+    ).get(...params) as { total: number } | undefined;
+    const total = countRow?.total ?? 0;
+
+    const traces = this.db.prepare(
+      `SELECT t.*, COUNT(s.id) as span_count
+       FROM traces t LEFT JOIN spans s ON t.id = s.trace_id
+       ${where}
+       GROUP BY t.id
+       ORDER BY t.start_time DESC
+       LIMIT ? OFFSET ?`
+    ).all(...params, options.limit, options.offset) as TraceRow[];
+
+    return { traces, total };
+  }
+
+  getTraceDetail(traceId: string): { trace: Trace; spans: Span[] } | null {
+    if (!this.db || !this.stmtGetTraceById || !this.stmtGetSpansByTraceId) return null;
+
+    const row = this.stmtGetTraceById.get(traceId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+
+    const trace: Trace = {
+      id: row.id as string,
+      sessionId: (row.session_id as string) ?? null,
+      petId: (row.pet_id as string) ?? null,
+      startTime: row.start_time as number,
+      endTime: (row.end_time as number) ?? null,
+      status: row.status as Trace['status'],
+      attributes: row.attributes ? JSON.parse(row.attributes as string) : {},
+    };
+
+    const spanRows = this.stmtGetSpansByTraceId.all(traceId) as Record<string, unknown>[];
+    const spans: Span[] = spanRows.map((r) => ({
+      id: r.id as string,
+      traceId: r.trace_id as string,
+      name: r.name as string,
+      startTime: r.start_time as number,
+      endTime: (r.end_time as number) ?? null,
+      status: r.status as Span['status'],
+      attributes: r.attributes ? JSON.parse(r.attributes as string) : {},
+    }));
+
+    return { trace, spans };
   }
 
   /**

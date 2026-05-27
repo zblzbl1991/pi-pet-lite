@@ -239,7 +239,9 @@ export type RendererToAgentMessage =
   | { type: 'workflow:resume'; runId: string }
   | { type: 'workflow:cancel'; runId: string }
   | { type: 'workflow:status'; runId: string }
-  | { type: 'workflow:history' };
+  | { type: 'workflow:history' }
+  | { type: 'trace:list'; offset: number; limit: number; status?: string; petId?: string }
+  | { type: 'trace:detail'; traceId: string };
 
 /** Messages sent from agent to renderer via MessagePort */
 export type AgentToRendererMessage =
@@ -275,7 +277,10 @@ export type AgentToRendererMessage =
   | { type: 'workflow-resume-response'; runId: string; success: boolean; error?: string }
   | { type: 'workflow-cancel-response'; runId: string; success: boolean; error?: string }
   | { type: 'workflow-status-response'; run: WorkflowRunSnapshot | null }
-  | { type: 'workflow-history-response'; runs: WorkflowRunSnapshot[] };
+  | { type: 'workflow-history-response'; runs: WorkflowRunSnapshot[] }
+  | { type: 'trace-list-response'; traces: TraceRow[]; total: number }
+  | { type: 'trace-detail-response'; detail: { trace: Trace; spans: Span[] } | null }
+  | { type: 'trace-completed'; traceId: string; status: string };
 
 /** Pet status report for IPC communication */
 export interface PetStatusReportMessage {
@@ -487,4 +492,39 @@ export interface WorkflowRunSnapshot {
   stepResults: Array<[string, StepResult]>;
   startedAt: number;
   completedAt?: number;
+}
+
+// ---- Trace Types ----
+
+/** Trace row returned by list queries (flat view from SQL join) */
+export interface TraceRow {
+  id: string;
+  session_id: string | null;
+  pet_id: string | null;
+  start_time: number;
+  end_time: number | null;
+  status: string;
+  span_count: number;
+}
+
+/** Full trace record */
+export interface Trace {
+  id: string;
+  sessionId: string | null;
+  petId: string | null;
+  startTime: number;
+  endTime: number | null;
+  status: 'running' | 'ok' | 'error' | 'aborted';
+  attributes: Record<string, unknown>;
+}
+
+/** A single span within a trace */
+export interface Span {
+  id: string;
+  traceId: string;
+  name: string;
+  startTime: number;
+  endTime: number | null;
+  status: 'running' | 'ok' | 'error';
+  attributes: Record<string, unknown>;
 }

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Tracer 查询方法需遵循项目数据库使用规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "TracesTab 组件需遵循前端组件规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "trace 列表状态管理和实时推送的处理方式"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Trace/Span 类型定义需遵循类型安全规范"}

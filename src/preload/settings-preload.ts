@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot } from '../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot, TraceRow, Trace, Span } from '../shared/types';
 
 /**
  * Preload script for the settings BrowserWindow.
@@ -173,6 +173,21 @@ const api = {
     return ipcRenderer.invoke('workflow:history') as Promise<{
       runs: WorkflowRunSnapshot[];
     }>;
+  },
+
+  // Trace query IPC
+  traceList(options: { offset: number; limit: number; status?: string; petId?: string }): Promise<{ traces: TraceRow[]; total: number }> {
+    return ipcRenderer.invoke('trace:list', options) as Promise<{ traces: TraceRow[]; total: number }>;
+  },
+
+  traceDetail(traceId: string): Promise<{ trace: Trace; spans: Span[] } | null> {
+    return ipcRenderer.invoke('trace:detail', traceId) as Promise<{ trace: Trace; spans: Span[] } | null>;
+  },
+
+  onTraceCompleted(callback: (payload: { traceId: string; status: string }) => void): () => void {
+    const listener = (_event: Electron.IpcRendererEvent, payload: { traceId: string; status: string }) => callback(payload);
+    ipcRenderer.on('trace:completed', listener);
+    return () => ipcRenderer.removeListener('trace:completed', listener);
   },
 
   closeWindow(): void {

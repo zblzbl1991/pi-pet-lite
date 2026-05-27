@@ -146,6 +146,9 @@ export const PetWindow: React.FC = () => {
           case 'workflow-cancel-response':
           case 'workflow-status-response':
           case 'workflow-history-response':
+          case 'trace-list-response':
+          case 'trace-detail-response':
+          case 'trace-completed':
             // These are handled by the ChatWindow/Settings; pet only tracks state
             break;
 

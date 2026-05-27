@@ -35,6 +35,9 @@ export const AgentEvents = {
 
   // Agent-to-agent direct messaging
   AGENT_MESSAGE: 'agent:message',
+
+  // Trace lifecycle
+  TRACE_COMPLETED: 'trace:completed',
 } as const;
 
 // ---------------------------------------------------------------------------

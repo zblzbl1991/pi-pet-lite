@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "验证前端代码质量"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "验证后端 Tracer 扩展代码质量"}

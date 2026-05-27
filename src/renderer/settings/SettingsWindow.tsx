@@ -26,9 +26,11 @@ import {
   XCircle,
   SkipForward,
   Loader,
+  Activity,
 } from 'lucide-react';
 import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole, AgentCardInfo, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot, StepResult } from '../../shared/types';
 import { TOOL_GROUPS, CUSTOM_PROFILE_DEFAULT_PROMPT, CUSTOM_PROFILE_DEFAULT_TOOLS } from '../../shared/constants';
+import { TracesTab } from './TracesTab';
 
 /** Provider option with display label and available models */
 interface ProviderOption {
@@ -101,7 +103,7 @@ const PROVIDERS: ProviderOption[] = [
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
 /** Sidebar navigation sections */
-type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets' | 'plugins' | 'workflows';
+type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets' | 'plugins' | 'workflows' | 'traces';
 
 const sharedStyles: Record<string, React.CSSProperties> = {
   label: {
@@ -1972,6 +1974,7 @@ export const SettingsWindow: React.FC = () => {
     { key: 'pets', label: '宠物', icon: <Bot size={16} strokeWidth={1.5} /> },
     { key: 'plugins', label: '插件', icon: <Plug size={16} strokeWidth={1.5} /> },
     { key: 'workflows', label: '工作流', icon: <GitBranch size={16} strokeWidth={1.5} /> },
+    { key: 'traces', label: 'Traces', icon: <Activity size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -2033,6 +2036,7 @@ export const SettingsWindow: React.FC = () => {
           {section === 'pets' && <ProfilesSection />}
           {section === 'plugins' && <PluginsSection />}
           {section === 'workflows' && <WorkflowsSection />}
+          {section === 'traces' && <TracesTab />}
         </div>
       </div>
 

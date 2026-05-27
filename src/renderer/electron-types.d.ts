@@ -20,6 +20,9 @@ import type {
   PluginSummary,
   WorkflowDefinition,
   WorkflowRunSnapshot,
+  TraceRow,
+  Trace,
+  Span,
 } from '../shared/types';
 
 /**
@@ -51,6 +54,9 @@ export interface SettingsElectronAPI {
   cancelWorkflow: (runId: string) => Promise<{ success: boolean; error?: string }>;
   getWorkflowStatus: (runId: string) => Promise<{ run: WorkflowRunSnapshot | null }>;
   getWorkflowHistory: () => Promise<{ runs: WorkflowRunSnapshot[] }>;
+  traceList: (options: { offset: number; limit: number; status?: string; petId?: string }) => Promise<{ traces: TraceRow[]; total: number }>;
+  traceDetail: (traceId: string) => Promise<{ trace: Trace; spans: Span[] } | null>;
+  onTraceCompleted: (callback: (payload: { traceId: string; status: string }) => void) => () => void;
   closeWindow: () => void;
 }
 

@@ -282,3 +282,8 @@ export const IPC_WORKFLOW_RESUME = 'workflow:resume';
 export const IPC_WORKFLOW_CANCEL = 'workflow:cancel';
 export const IPC_WORKFLOW_STATUS = 'workflow:status';
 export const IPC_WORKFLOW_HISTORY = 'workflow:history';
+
+/** IPC channels for trace operations (main <-> renderer <-> agent) */
+export const IPC_TRACE_LIST = 'trace:list';
+export const IPC_TRACE_DETAIL = 'trace:detail';
+export const IPC_TRACE_COMPLETED = 'trace:completed';

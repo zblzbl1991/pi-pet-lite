@@ -25,7 +25,7 @@ import { setScheduleFireWithPriorityCallback } from './tools/registry';
 import { TaskPriority } from './task-scheduler';
 import { getDefaultProfile } from './profiles';
 import { loadPlugins, getPluginSummaries, enablePlugin as loaderEnablePlugin, disablePlugin as loaderDisablePlugin, installPluginFromPath, uninstallPlugin, watchForChanges } from './plugins';
-import { EventBus } from './event-bus';
+import { EventBus, AgentEvents } from './event-bus';
 import { SessionStore } from '../storage/session-store';
 import { Tracer } from './tracer';
 import { SESSIONS_DB_FILENAME } from '../shared/constants';
@@ -243,6 +243,12 @@ async function initPetManager(): Promise<void> {
         tracer = new Tracer(sessionStore.database, eventBus);
         tracer.pruneOldTraces();
         console.log('[agent-process] Tracer initialized');
+
+        // Forward TRACE_COMPLETED events to the main process for real-time UI updates
+        eventBus.on(AgentEvents.TRACE_COMPLETED, (payload) => {
+          const p = payload as { traceId: string; status: string };
+          sendToRenderer({ type: 'trace-completed', traceId: p.traceId, status: p.status });
+        });
       } catch (err) {
         console.error('[agent-process] Failed to initialize Tracer:', err);
       }
@@ -501,6 +507,16 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
 
     case 'workflow:history': {
       handleWorkflowHistory();
+      break;
+    }
+
+    case 'trace:list': {
+      handleTraceList(msg.offset, msg.limit, msg.status, msg.petId);
+      break;
+    }
+
+    case 'trace:detail': {
+      handleTraceDetail(msg.traceId);
       break;
     }
 
@@ -910,6 +926,30 @@ function handleWorkflowHistory(): void {
 
   const snapshots = workflowEngine.listRunSnapshots();
   sendToRenderer({ type: 'workflow-history-response', runs: snapshots });
+}
+
+// ---------------------------------------------------------------------------
+// Trace handlers
+// ---------------------------------------------------------------------------
+
+function handleTraceList(offset: number, limit: number, status?: string, petId?: string): void {
+  if (!tracer) {
+    sendToRenderer({ type: 'trace-list-response', traces: [], total: 0 });
+    return;
+  }
+
+  const result = tracer.listTraces({ offset, limit, status, petId });
+  sendToRenderer({ type: 'trace-list-response', traces: result.traces, total: result.total });
+}
+
+function handleTraceDetail(traceId: string): void {
+  if (!tracer) {
+    sendToRenderer({ type: 'trace-detail-response', detail: null });
+    return;
+  }
+
+  const detail = tracer.getTraceDetail(traceId);
+  sendToRenderer({ type: 'trace-detail-response', detail });
 }
 
 /**

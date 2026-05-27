@@ -114,6 +114,13 @@ export function createSettingsWindow(
 }
 
 /**
+ * Get the current settings window (may be null if not yet created or closed).
+ */
+export function getSettingsWindow(): BrowserWindow | null {
+  return settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow : null;
+}
+
+/**
  * Resolve the path to the settings renderer HTML.
  * Looks for the Vite-bundled output in dist/renderer/settings/index.html.
  */
