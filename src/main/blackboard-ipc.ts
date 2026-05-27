@@ -6,10 +6,15 @@
  * - The 'global' namespace can be written by anyone.
  * - Pet namespaces (anything other than 'global') can only be written
  *   by the matching pet. Any process can read any namespace.
+ *
+ * Note: All handlers call getBlackboardStore() per-request rather than
+ * capturing a reference at registration time. This ensures workspace
+ * switches (which recreate the singleton) are handled transparently.
  */
 
 import { ipcMain } from 'electron';
-import { getBlackboardStore } from '../storage/blackboard';
+import { getBlackboardStore, setBlackboardDbPath } from '../storage/blackboard';
+import { BLACKBOARD_DB_FILENAME } from '../shared/constants';
 import type { BlackboardEntryItem } from '../shared/types';
 import {
   IPC_BB_GET,
@@ -18,6 +23,7 @@ import {
   IPC_BB_LIST,
   IPC_BB_QUERY,
 } from '../shared/constants';
+import path from 'path';
 
 /**
  * Validate that a writer is allowed to write to the given namespace.
@@ -32,11 +38,21 @@ function canWrite(_writerId: string | undefined, _namespace: string): boolean {
 }
 
 /**
+ * Initialize the BlackboardStore with a workspace-scoped database path.
+ * Called during bootstrap and when switching workspaces.
+ */
+export function initBlackboardForWorkspace(workspaceDataPath: string): void {
+  const dbPath = path.join(workspaceDataPath, BLACKBOARD_DB_FILENAME);
+  setBlackboardDbPath(dbPath);
+}
+
+/**
  * Register all Blackboard IPC handlers on ipcMain.
  * Should be called once during bootstrap.
  */
 export function registerBlackboardIpcHandlers(): void {
-  const store = getBlackboardStore();
+  // Eagerly create the initial instance (path already set via initBlackboardForWorkspace)
+  getBlackboardStore();
 
   // ---- Get ----
   ipcMain.handle(
@@ -47,7 +63,7 @@ export function registerBlackboardIpcHandlers(): void {
       key: string
     ): { success: boolean; error?: string; data?: BlackboardEntryItem | null } => {
       try {
-        const result = store.get(namespace, key);
+        const result = getBlackboardStore().get(namespace, key);
         return { success: true, data: result };
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -71,7 +87,7 @@ export function registerBlackboardIpcHandlers(): void {
         if (!canWrite(writerId, namespace)) {
           return { success: false, error: `Write access denied for namespace: ${namespace}` };
         }
-        store.set(namespace, key, value, ttlMs ? { ttlMs } : undefined);
+        getBlackboardStore().set(namespace, key, value, ttlMs ? { ttlMs } : undefined);
         return { success: true };
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -93,7 +109,7 @@ export function registerBlackboardIpcHandlers(): void {
         if (!canWrite(writerId, namespace)) {
           return { success: false, error: `Write access denied for namespace: ${namespace}` };
         }
-        const deleted = store.delete(namespace, key);
+        const deleted = getBlackboardStore().delete(namespace, key);
         return { success: true, data: deleted };
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -111,7 +127,7 @@ export function registerBlackboardIpcHandlers(): void {
       prefix?: string
     ): { success: boolean; error?: string; data?: BlackboardEntryItem[] } => {
       try {
-        const entries = store.list(namespace, prefix);
+        const entries = getBlackboardStore().list(namespace, prefix);
         return { success: true, data: entries };
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -129,9 +145,9 @@ export function registerBlackboardIpcHandlers(): void {
       filter: Record<string, unknown>
     ): { success: boolean; error?: string; data?: BlackboardEntryItem[] } => {
       try {
-        const entries = store.query(namespace, filter);
+        const entries = getBlackboardStore().query(namespace, filter);
         return { success: true, data: entries };
-      } catch (err: unknown) {
+      } catch ( err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         return { success: false, error: errorMessage };
       }

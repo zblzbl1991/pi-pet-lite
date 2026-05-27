@@ -437,16 +437,33 @@ function getDefaultDbPath(): string {
   );
 }
 
+/** Active database path override (set when switching workspaces) */
+let dbPathOverride: string | null = null;
+
+/**
+ * Set a custom database path for the BlackboardStore singleton.
+ * Used by the workspace system to scope the blackboard to a specific workspace directory.
+ * If a store instance already exists, it is closed and recreated on next access.
+ */
+export function setBlackboardDbPath(dbPath: string): void {
+  if (storeInstance) {
+    storeInstance.close();
+    storeInstance = null;
+  }
+  dbPathOverride = dbPath;
+}
+
 /** Singleton instance (lazy-initialized) */
 let storeInstance: BlackboardStore | null = null;
 
 /**
  * Get the singleton BlackboardStore instance.
- * Creates it on first call.
+ * Creates it on first call, respecting any db path override set for workspaces.
  */
 export function getBlackboardStore(config?: Partial<BlackboardConfig>): BlackboardStore {
   if (!storeInstance) {
-    storeInstance = new BlackboardStore(undefined, config);
+    const resolvedPath = dbPathOverride ?? undefined;
+    storeInstance = new BlackboardStore(resolvedPath, config);
   }
   return storeInstance;
 }

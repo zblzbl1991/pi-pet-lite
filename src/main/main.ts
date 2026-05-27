@@ -22,7 +22,7 @@ import {
   getQuickInputHtmlPath,
 } from './windows';
 import { PetWindowManager } from './pet-window-manager';
-import { createTray } from './tray';
+import { createTray, rebuildTrayMenu } from './tray';
 import {
   IPC_AGENT_MESSAGE,
   IPC_RENDERER_TO_AGENT,
@@ -48,9 +48,22 @@ import {
   IPC_TRACE_LIST,
   IPC_TRACE_DETAIL,
   IPC_TRACE_COMPLETED,
+  IPC_MARKETPLACE_LIST_INSTALLED,
+  IPC_MARKETPLACE_INSTALL,
+  IPC_MARKETPLACE_UNINSTALL,
+  IPC_MARKETPLACE_GET_PACKAGE_INFO,
+  IPC_NODE_LIST,
+  IPC_NODE_ADD,
+  IPC_NODE_REMOVE,
+  IPC_NODE_STATUS,
+  IPC_NODE_DISCOVER,
+  IPC_NODE_LIST_EXPOSED,
+  IPC_NODE_TOGGLE_EXPOSE,
+  IPC_NODE_UPDATE_EXPOSURE,
 } from '../shared/constants';
-import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig, updateRiskLevel, updateProfilesConfig, resetProfilesConfig } from '../config/config-store';
-import { registerBlackboardIpcHandlers } from './blackboard-ipc';
+import { readConfig, updateLLMConfig, updateNotificationConfig, updateBrowserConfig, updateRiskLevel, updateProfilesConfig, resetProfilesConfig, setConfigBasePath } from '../config/config-store';
+import { registerBlackboardIpcHandlers, initBlackboardForWorkspace } from './blackboard-ipc';
+import { registerWorkspaceIpcHandlers, getWorkspaceManager } from './workspace-ipc';
 import { MessageRole } from '../shared/types';
 import type {
   LLMConfig,
@@ -69,6 +82,11 @@ import type {
   TraceRow,
   Trace,
   Span,
+  InstalledAgentSummaryIPC,
+  AgentManifestIPC,
+  NodeInfoIPC,
+  RemoteAgentInfoIPC,
+  ExposedAgentIPC,
 } from '../shared/types';
 import { getDefaultProfile, getProfileById } from '../agent/profiles';
 
@@ -259,7 +277,69 @@ function bootstrap(): void {
   app.whenReady().then(() => {
     const gifsPath = getGifsBasePath();
 
-    // Initialize Blackboard store and register IPC handlers
+    // Initialize Workspace Manager first (needed for Blackboard path resolution)
+    // Declare mutable references for workspace switching support
+    let mainPort: Electron.MessagePortMain;
+    let agentProc: Electron.UtilityProcess;
+
+    // Initialize Workspace Manager and register IPC handlers
+    // The switch callback handles tearing down and reinitializing the agent
+    const workspaceManager = registerWorkspaceIpcHandlers(
+      async (newWorkspace) => {
+        // Workspace switch: tear down agent process, clear message buffer,
+        // and reinitialize with new workspace data
+        console.log(`[main] Switching workspace to: ${newWorkspace.name} (${newWorkspace.id})`);
+
+        // Re-initialize Blackboard store for the new workspace
+        initBlackboardForWorkspace(newWorkspace.path);
+
+        // Clear message buffer
+        messageBuffer.length = 0;
+
+        // Kill the existing agent process
+        try {
+          agentProc.kill();
+        } catch {
+          // Process may already be dead
+        }
+
+        // Re-launch agent process with new workspace path
+        const { port1: newMainPort, port2: newAgentPort } = new MessageChannelMain();
+        const newAgentProc = utilityProcess.fork(getAgentEntryPath(), [], {
+          env: {
+            ...process.env,
+            CLAWD_USER_DATA: newWorkspace.path,
+          },
+        });
+        newAgentProc.postMessage({ type: 'init-multi-pet' }, [newAgentPort]);
+
+        // Re-register all message handlers on the new port
+        setupAgentPort(newMainPort);
+        setupPluginResponseHandler(newMainPort);
+        setupWorkflowResponseHandler(newMainPort);
+        setupTraceResponseHandler(newMainPort);
+
+        // Update tray with new workspace info
+        updateTrayWorkspaceMenu();
+
+        // Force update the agent process reference
+        agentProc = newAgentProc;
+        mainPort = newMainPort;
+      }
+    );
+
+    // Update tray to show workspace switching menu
+    function updateTrayWorkspaceMenu(): void {
+      const wm = getWorkspaceManager();
+      if (!wm) return;
+      const active = wm.getActive();
+      const workspaces = wm.list();
+      // Rebuild tray menu with workspace submenu
+      rebuildTrayMenu(active, workspaces);
+    }
+
+    // Initialize Blackboard store with workspace-scoped path and register IPC handlers
+    initBlackboardForWorkspace(workspaceManager.getActiveDataPath());
     registerBlackboardIpcHandlers();
 
     // Create PetWindowManager for multi-pet support
@@ -290,118 +370,188 @@ function bootstrap(): void {
         if (chiefWin) {
           chiefWin.webContents.openDevTools({ mode: 'detach' });
         }
+      },
+      (workspaceId: string) => {
+        // Workspace switch via tray menu - invoke the IPC handler directly
+        try {
+          const wm = getWorkspaceManager();
+          if (!wm) return;
+          const newWorkspace = wm.switchWorkspace(workspaceId);
+          setConfigBasePath(newWorkspace.path);
+
+          // Re-initialize Blackboard store for the new workspace
+          initBlackboardForWorkspace(newWorkspace.path);
+
+          // Clear message buffer
+          messageBuffer.length = 0;
+
+          // Kill the existing agent process
+          try { agentProc.kill(); } catch { /* process may already be dead */ }
+
+          // Re-launch agent process with new workspace path
+          const { port1: newMainPort, port2: newAgentPort } = new MessageChannelMain();
+          const newAgentProc = utilityProcess.fork(getAgentEntryPath(), [], {
+            env: { ...process.env, CLAWD_USER_DATA: newWorkspace.path },
+          });
+          newAgentProc.postMessage({ type: 'init-multi-pet' }, [newAgentPort]);
+
+          // Re-register all message handlers on the new port
+          setupAgentPort(newMainPort);
+          setupPluginResponseHandler(newMainPort);
+          setupWorkflowResponseHandler(newMainPort);
+          setupTraceResponseHandler(newMainPort);
+
+          // Update references
+          agentProc = newAgentProc;
+          mainPort = newMainPort;
+
+          // Rebuild tray menu
+          updateTrayWorkspaceMenu();
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[main] Failed to switch workspace via tray: ${msg}`);
+        }
       }
     );
 
     // ---- Message routing: Agent <-MessagePort-> Main ->IPC-> Windows ----
-    const { port1: mainPort, port2: agentPort } = new MessageChannelMain();
+    const { port1: initialMainPort, port2: agentPort } = new MessageChannelMain();
+    mainPort = initialMainPort;
 
     // Launch agent utility process (multi-pet mode)
-    const agentProc = utilityProcess.fork(getAgentEntryPath(), [], {
-      env: { ...process.env, CLAWD_USER_DATA: app.getPath('userData') },
+    // Use the active workspace's data path so the agent opens the correct
+    // session DB, config, etc. for the current workspace.
+    const activeDataPath = workspaceManager.getActiveDataPath();
+    agentProc = utilityProcess.fork(getAgentEntryPath(), [], {
+      env: { ...process.env, CLAWD_USER_DATA: activeDataPath },
     });
     agentProc.postMessage({ type: 'init-multi-pet' }, [agentPort]);
 
-    // Main process keeps port1: listen for agent messages
-    mainPort.on('message', (event: unknown) => {
-      const msg = (event as { data: AgentToRendererMessage }).data;
+    // --- Helper: set up message listeners on an agent MessagePort ---
+    function setupAgentPort(port: Electron.MessagePortMain): void {
+      port.on('message', (event: unknown) => {
+        const msg = (event as { data: AgentToRendererMessage }).data;
 
-      // Update message buffer
-      switch (msg.type) {
-        case 'chat-message':
-          addToBuffer(msg.message);
-          break;
-        case 'chat-message-update':
-          updateBufferStream(msg.id, msg.delta);
-          break;
-        case 'chat-message-end':
-          markBufferStreamEnd(msg.id);
-          break;
-        case 'chat-thinking':
-          updateBufferThinking(msg.id, msg.delta);
-          break;
-        case 'tool-execution':
-          if (msg.status === 'running' && msg.args) {
-            // New tool card
-            const toolCard: ToolCardEntry = {
-              type: 'tool-card',
-              id: `tc-${msg.toolCallId}`,
-              toolCallId: msg.toolCallId,
-              toolName: msg.toolName,
-              toolArgs: msg.args,
-              toolStatus: 'running',
-              timestamp: Date.now(),
-            };
-            addToBuffer(toolCard);
-          } else if (msg.status === 'running' && msg.partialResult) {
-            // Partial result update - append to existing result
-            updateBufferToolCard(msg.toolCallId, {}, msg.partialResult);
-          } else if (msg.status === 'done') {
-            updateBufferToolCard(msg.toolCallId, {
-              toolStatus: 'done',
-              toolResult: msg.result,
-              duration: msg.duration,
-            });
-          } else if (msg.status === 'error') {
-            updateBufferToolCard(msg.toolCallId, {
-              toolStatus: 'error',
-              toolResult: msg.result,
-              duration: msg.duration,
-            });
-          }
-          break;
-      }
-
-      // Broadcast to all windows via IPC
-      broadcastToWindows(msg);
-
-      // Handle pet-status messages: route to correct pet window and spawn/despawn as needed
-      if (msg.type === 'pet-status' && petWindowManager) {
-        const { petId, status } = msg;
-
-        if (status === 'offline') {
-          // Pet was disposed: despawn its window (but never despawn chief)
-          if (petId !== 'chief') {
-            petWindowManager.despawnPet(petId);
-          }
-        } else {
-          // Pet is active: ensure it has a window, then update status
-          const profile = getProfileById(petId);
-          if (profile) {
-            petWindowManager.spawnPet(profile);
-          }
-          petWindowManager.updatePetStatus(petId, status);
+        // Update message buffer
+        switch (msg.type) {
+          case 'chat-message':
+            addToBuffer(msg.message);
+            break;
+          case 'chat-message-update':
+            updateBufferStream(msg.id, msg.delta);
+            break;
+          case 'chat-message-end':
+            markBufferStreamEnd(msg.id);
+            break;
+          case 'chat-thinking':
+            updateBufferThinking(msg.id, msg.delta);
+            break;
+          case 'tool-execution':
+            if (msg.status === 'running' && msg.args) {
+              const toolCard: ToolCardEntry = {
+                type: 'tool-card',
+                id: `tc-${msg.toolCallId}`,
+                toolCallId: msg.toolCallId,
+                toolName: msg.toolName,
+                toolArgs: msg.args,
+                toolStatus: 'running',
+                timestamp: Date.now(),
+              };
+              addToBuffer(toolCard);
+            } else if (msg.status === 'running' && msg.partialResult) {
+              updateBufferToolCard(msg.toolCallId, {}, msg.partialResult);
+            } else if (msg.status === 'done') {
+              updateBufferToolCard(msg.toolCallId, {
+                toolStatus: 'done',
+                toolResult: msg.result,
+                duration: msg.duration,
+              });
+            } else if (msg.status === 'error') {
+              updateBufferToolCard(msg.toolCallId, {
+                toolStatus: 'error',
+                toolResult: msg.result,
+                duration: msg.duration,
+              });
+            }
+            break;
         }
-      }
 
-      // Auto-show ChatWindow for confirmation requests
-      if (msg.type === 'confirmation-request') {
-        let chatWin = getChatWindow();
-        const chiefPos = petWindowManager?.getChiefPosition();
-        const petPt = chiefPos
-          ? { x: chiefPos.x + 80, y: chiefPos.y + 80 }
-          : undefined;
-        if (!chatWin) {
-          const chatHtmlPath = getChatHtmlPath();
-          const chatPreloadPath = getChatPreloadPath();
-          createChatWindow(chatHtmlPath, chatPreloadPath, petPt);
-          chatWin = getChatWindow();
-          chatWin?.once('ready-to-show', () => {
+        // Broadcast to all windows via IPC
+        broadcastToWindows(msg);
+
+        // Handle pet-status messages
+        if (msg.type === 'pet-status' && petWindowManager) {
+          const { petId, status } = msg;
+          if (status === 'offline') {
+            if (petId !== 'chief') {
+              petWindowManager.despawnPet(petId);
+            }
+          } else {
+            const profile = getProfileById(petId);
+            if (profile) {
+              petWindowManager.spawnPet(profile);
+            }
+            petWindowManager.updatePetStatus(petId, status);
+          }
+        }
+
+        // Auto-show ChatWindow for confirmation requests
+        if (msg.type === 'confirmation-request') {
+          let chatWin = getChatWindow();
+          const chiefPos = petWindowManager?.getChiefPosition();
+          const petPt = chiefPos
+            ? { x: chiefPos.x + 80, y: chiefPos.y + 80 }
+            : undefined;
+          if (!chatWin) {
+            const chatHtmlPath = getChatHtmlPath();
+            const chatPreloadPath = getChatPreloadPath();
+            createChatWindow(chatHtmlPath, chatPreloadPath, petPt);
+            chatWin = getChatWindow();
+            chatWin?.once('ready-to-show', () => {
+              showChatWindow(petPt);
+            });
+          } else {
             showChatWindow(petPt);
-          });
-        } else {
-          showChatWindow(petPt);
+          }
         }
-      }
 
-      // System toast notification on task completion
-      if (msg.type === 'state-change') {
-        if (msg.state === 'success' || msg.state === 'failed') {
-          sendSystemNotification(msg.state);
+        // System toast notification on task completion
+        if (msg.type === 'state-change') {
+          if (msg.state === 'success' || msg.state === 'failed') {
+            sendSystemNotification(msg.state);
+          }
         }
-      }
-    });
-    mainPort.start();
+      });
+      port.start();
+    }
+
+    // Register plugin/workflow/trace response handlers on the initial port
+    function setupPluginResponseHandler(port: Electron.MessagePortMain): void {
+      port.on('message', (event: unknown) => {
+        const msg = (event as { data: AgentToRendererMessage }).data;
+        _pluginResponseHandler(msg);
+      });
+    }
+
+    function setupWorkflowResponseHandler(port: Electron.MessagePortMain): void {
+      port.on('message', (event: unknown) => {
+        const msg = (event as { data: AgentToRendererMessage }).data;
+        _workflowResponseHandler(msg);
+      });
+    }
+
+    function setupTraceResponseHandler(port: Electron.MessagePortMain): void {
+      port.on('message', (event: unknown) => {
+        const msg = (event as { data: AgentToRendererMessage }).data;
+        _traceResponseHandler(msg);
+      });
+    }
+
+    // Set up all listeners on the initial port
+    setupAgentPort(mainPort);
+    setupPluginResponseHandler(mainPort);
+    setupWorkflowResponseHandler(mainPort);
+    setupTraceResponseHandler(mainPort);
 
     // Handle messages from renderers -> forward to agent
     ipcMain.on(
@@ -916,11 +1066,7 @@ function bootstrap(): void {
       }
     };
 
-    // Register plugin response handler as a second listener on the MessagePort.
-    mainPort.on('message', (event: unknown) => {
-      const msg = (event as { data: AgentToRendererMessage }).data;
-      _pluginResponseHandler(msg);
-    });
+    // Plugin response handler registered via setupPluginResponseHandler above.
 
     ipcMain.handle(IPC_PLUGIN_LIST, async (): Promise<PluginSummary[]> => {
       return relayPluginRequest<PluginSummary[]>({ type: 'plugin-list' }, 'plugin-list');
@@ -1061,11 +1207,7 @@ function bootstrap(): void {
       }
     };
 
-    // Register workflow response handler as another listener on the MessagePort.
-    mainPort.on('message', (event: unknown) => {
-      const msg = (event as { data: AgentToRendererMessage }).data;
-      _workflowResponseHandler(msg);
-    });
+    // Workflow response handler registered via setupWorkflowResponseHandler above.
 
     ipcMain.handle(IPC_WORKFLOW_LIST, async (): Promise<WorkflowDefinition[]> => {
       return relayWorkflowRequest<WorkflowDefinition[]>({ type: 'workflow:list' }, 'workflow-list');
@@ -1185,11 +1327,7 @@ function bootstrap(): void {
       }
     };
 
-    // Register trace response handler as another listener on the MessagePort.
-    mainPort.on('message', (event: unknown) => {
-      const msg = (event as { data: AgentToRendererMessage }).data;
-      _traceResponseHandler(msg);
-    });
+    // Trace response handler registered via setupTraceResponseHandler above.
 
     ipcMain.handle(
       IPC_TRACE_LIST,
@@ -1205,6 +1343,294 @@ function bootstrap(): void {
       async (_event: Electron.IpcMainInvokeEvent, traceId: string) => {
         return relayTraceRequest<{ detail: { trace: Trace; spans: Span[] } | null }>(
           { type: 'trace:detail', traceId }, 'trace-detail'
+        );
+      }
+    );
+
+    // ---- Marketplace IPC handlers ----
+    // Relay marketplace operations to the agent process via MessagePort.
+
+    /** Pending marketplace request promises keyed by response type */
+    const pendingMarketplaceRequests = new Map<string, {
+      resolve: (value: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }>();
+
+    function relayMarketplaceRequest<T>(msg: RendererToAgentMessage, responsePrefix: string, timeoutMs = 15000): Promise<T> {
+      return new Promise<T>((resolve) => {
+        const key = responsePrefix;
+        const existing = pendingMarketplaceRequests.get(key);
+        if (existing) {
+          clearTimeout(existing.timer);
+          pendingMarketplaceRequests.delete(key);
+        }
+
+        const timer = setTimeout(() => {
+          pendingMarketplaceRequests.delete(key);
+          resolve({ success: false, error: 'Request timed out' } as unknown as T);
+        }, timeoutMs);
+
+        pendingMarketplaceRequests.set(key, { resolve: resolve as (value: unknown) => void, timer });
+        mainPort.postMessage(msg);
+      });
+    }
+
+    // Handle marketplace responses from agent process.
+    const _marketplaceResponseHandler = (msg: AgentToRendererMessage): boolean => {
+      switch (msg.type) {
+        case 'marketplace-list-response': {
+          const pending = pendingMarketplaceRequests.get('marketplace-list');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingMarketplaceRequests.delete('marketplace-list');
+            pending.resolve(msg.agents);
+          }
+          return true;
+        }
+        case 'marketplace-install-response': {
+          const pending = pendingMarketplaceRequests.get('marketplace-install');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingMarketplaceRequests.delete('marketplace-install');
+            pending.resolve({ success: msg.success, name: msg.name, error: msg.error, warnings: msg.warnings });
+          }
+          return true;
+        }
+        case 'marketplace-uninstall-response': {
+          const pending = pendingMarketplaceRequests.get('marketplace-uninstall');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingMarketplaceRequests.delete('marketplace-uninstall');
+            pending.resolve({ success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'marketplace-package-info-response': {
+          const pending = pendingMarketplaceRequests.get('marketplace-package-info');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingMarketplaceRequests.delete('marketplace-package-info');
+            pending.resolve({ success: msg.success, manifest: msg.manifest, error: msg.error });
+          }
+          return true;
+        }
+        default:
+          return false;
+      }
+    };
+
+    // Register marketplace response handler as another listener on the MessagePort.
+    mainPort.on('message', (event: unknown) => {
+      const msg = (event as { data: AgentToRendererMessage }).data;
+      _marketplaceResponseHandler(msg);
+    });
+
+    ipcMain.handle(IPC_MARKETPLACE_LIST_INSTALLED, async (): Promise<InstalledAgentSummaryIPC[]> => {
+      return relayMarketplaceRequest<InstalledAgentSummaryIPC[]>(
+        { type: 'marketplace:list-installed' }, 'marketplace-list'
+      );
+    });
+
+    ipcMain.handle(
+      IPC_MARKETPLACE_INSTALL,
+      async (_event: Electron.IpcMainInvokeEvent, packagePath: string) => {
+        return relayMarketplaceRequest<{ success: boolean; name?: string; error?: string; warnings?: string[] }>(
+          { type: 'marketplace:install', packagePath }, 'marketplace-install', 30000
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_MARKETPLACE_UNINSTALL,
+      async (_event: Electron.IpcMainInvokeEvent, name: string) => {
+        return relayMarketplaceRequest<{ success: boolean; error?: string }>(
+          { type: 'marketplace:uninstall', name }, 'marketplace-uninstall'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_MARKETPLACE_GET_PACKAGE_INFO,
+      async (_event: Electron.IpcMainInvokeEvent, packagePath: string) => {
+        return relayMarketplaceRequest<{ success: boolean; manifest?: AgentManifestIPC; error?: string }>(
+          { type: 'marketplace:get-package-info', packagePath }, 'marketplace-package-info'
+        );
+      }
+    );
+
+    // ---- Distributed Runtime Node IPC handlers ----
+    // Relay node operations to the agent process via MessagePort.
+
+    /** Pending node request promises keyed by response type */
+    const pendingNodeRequests = new Map<string, {
+      resolve: (value: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }>();
+
+    function relayNodeRequest<T>(msg: RendererToAgentMessage, responsePrefix: string, timeoutMs = 15000): Promise<T> {
+      return new Promise<T>((resolve) => {
+        const key = responsePrefix;
+        const existing = pendingNodeRequests.get(key);
+        if (existing) {
+          clearTimeout(existing.timer);
+          pendingNodeRequests.delete(key);
+        }
+
+        const timer = setTimeout(() => {
+          pendingNodeRequests.delete(key);
+          resolve({ nodes: [] } as unknown as T);
+        }, timeoutMs);
+
+        pendingNodeRequests.set(key, { resolve: resolve as (value: unknown) => void, timer });
+        mainPort.postMessage(msg);
+      });
+    }
+
+    // Handle node responses from agent process.
+    const _nodeResponseHandler = (msg: AgentToRendererMessage): boolean => {
+      switch (msg.type) {
+        case 'node-list-response': {
+          const pending = pendingNodeRequests.get('node-list');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingNodeRequests.delete('node-list');
+            pending.resolve({ nodes: msg.nodes });
+          }
+          return true;
+        }
+        case 'node-add-response': {
+          const pending = pendingNodeRequests.get('node-add');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingNodeRequests.delete('node-add');
+            pending.resolve({ success: msg.success, nodeId: msg.nodeId, error: msg.error });
+          }
+          return true;
+        }
+        case 'node-remove-response': {
+          const pending = pendingNodeRequests.get('node-remove');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingNodeRequests.delete('node-remove');
+            pending.resolve({ success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'node-status-response': {
+          const pending = pendingNodeRequests.get('node-status');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingNodeRequests.delete('node-status');
+            pending.resolve({ nodes: msg.nodes });
+          }
+          return true;
+        }
+        case 'node-discover-response': {
+          const pending = pendingNodeRequests.get('node-discover');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingNodeRequests.delete('node-discover');
+            pending.resolve({ success: msg.success, agents: msg.agents, error: msg.error });
+          }
+          return true;
+        }
+        case 'node-list-exposed-response': {
+          const pending = pendingNodeRequests.get('node-list-exposed');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingNodeRequests.delete('node-list-exposed');
+            pending.resolve({ exposedAgents: msg.exposedAgents });
+          }
+          return true;
+        }
+        case 'node-toggle-expose-response': {
+          const pending = pendingNodeRequests.get('node-toggle-expose');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingNodeRequests.delete('node-toggle-expose');
+            pending.resolve({ success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        case 'node-update-exposure-response': {
+          const pending = pendingNodeRequests.get('node-update-exposure');
+          if (pending) {
+            clearTimeout(pending.timer);
+            pendingNodeRequests.delete('node-update-exposure');
+            pending.resolve({ success: msg.success, error: msg.error });
+          }
+          return true;
+        }
+        default:
+          return false;
+      }
+    };
+
+    // Register node response handler as another listener on the MessagePort.
+    mainPort.on('message', (event: unknown) => {
+      const msg = (event as { data: AgentToRendererMessage }).data;
+      _nodeResponseHandler(msg);
+    });
+
+    ipcMain.handle(IPC_NODE_LIST, async (): Promise<{ nodes: NodeInfoIPC[] }> => {
+      return relayNodeRequest<{ nodes: NodeInfoIPC[] }>(
+        { type: 'node:list' }, 'node-list'
+      );
+    });
+
+    ipcMain.handle(
+      IPC_NODE_ADD,
+      async (_event: Electron.IpcMainInvokeEvent, label: string, url: string, apiKey: string) => {
+        return relayNodeRequest<{ success: boolean; nodeId?: string; error?: string }>(
+          { type: 'node:add', label, url, apiKey }, 'node-add'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_NODE_REMOVE,
+      async (_event: Electron.IpcMainInvokeEvent, nodeId: string) => {
+        return relayNodeRequest<{ success: boolean; error?: string }>(
+          { type: 'node:remove', nodeId }, 'node-remove'
+        );
+      }
+    );
+
+    ipcMain.handle(IPC_NODE_STATUS, async (): Promise<{ nodes: NodeInfoIPC[] }> => {
+      return relayNodeRequest<{ nodes: NodeInfoIPC[] }>(
+        { type: 'node:status' }, 'node-status'
+      );
+    });
+
+    ipcMain.handle(
+      IPC_NODE_DISCOVER,
+      async (_event: Electron.IpcMainInvokeEvent, nodeId: string) => {
+        return relayNodeRequest<{ success: boolean; agents?: RemoteAgentInfoIPC[]; error?: string }>(
+          { type: 'node:discover', nodeId }, 'node-discover', 30000
+        );
+      }
+    );
+
+    ipcMain.handle(IPC_NODE_LIST_EXPOSED, async (): Promise<{ exposedAgents: ExposedAgentIPC[] }> => {
+      return relayNodeRequest<{ exposedAgents: ExposedAgentIPC[] }>(
+        { type: 'node:list-exposed-agents' }, 'node-list-exposed'
+      );
+    });
+
+    ipcMain.handle(
+      IPC_NODE_TOGGLE_EXPOSE,
+      async (_event: Electron.IpcMainInvokeEvent, petId: string, exposed: boolean) => {
+        return relayNodeRequest<{ success: boolean; error?: string }>(
+          { type: 'node:toggle-expose', petId, exposed }, 'node-toggle-expose'
+        );
+      }
+    );
+
+    ipcMain.handle(
+      IPC_NODE_UPDATE_EXPOSURE,
+      async (_event: Electron.IpcMainInvokeEvent, config: { enabled?: boolean; port?: number; apiKey?: string }) => {
+        return relayNodeRequest<{ success: boolean; error?: string }>(
+          { type: 'node:update-exposure-config', ...config }, 'node-update-exposure'
         );
       }
     );
