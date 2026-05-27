@@ -36,6 +36,36 @@ import {
   watchForChanges as watchWorkflowChanges,
   WorkflowEngine,
 } from './workflow';
+import {
+  getInstalledAgentSummaries,
+  installAgent as marketplaceInstallAgent,
+  uninstallAgent as marketplaceUninstallAgent,
+  readPackageManifest as marketplaceReadPackageManifest,
+} from './marketplace';
+import { readConfig, updateProfilesConfig, updateNodesConfig } from '../config/config-store';
+import type { InstalledAgentSummaryIPC, AgentManifestIPC, NodeInfoIPC, RemoteAgentInfoIPC, ExposedAgentIPC } from '../shared/types';
+import {
+  registerNode,
+  loadNodes,
+  removeNode,
+  getNodes,
+  getNode,
+  checkNodeHealth,
+  startHealthChecks,
+  stopHealthChecks,
+  discoverNodeAgents,
+  setPetManagerForRuntimeNode,
+  setExposureConfig,
+  startRuntimeNode,
+  stopRuntimeNode,
+  restartRuntimeNode,
+  getNodesForPersistence,
+  toggleAgentExposure,
+  disposeDiscovery,
+  filterExposedAgents,
+} from './runtime';
+import type { RuntimeNode } from './runtime';
+import { getProfileIds } from './profiles';
 import path from 'path';
 
 let agentPort: MessagePortMain | null = null;
@@ -282,6 +312,12 @@ async function initPetManager(): Promise<void> {
   // Inject PetManager into runtime for inbox notification in system prompts
   setPetManagerForInbox(petManager);
 
+  // Inject PetManager into runtime node for incoming cross-node delegation
+  setPetManagerForRuntimeNode(petManager);
+
+  // Initialize distributed runtime nodes (discovery, health checks, server)
+  initRuntimeNodes();
+
   // Wire up scheduled tasks to use priority-aware delegation via PetManager.
   // Cron fires now route through delegateWithPriority(scheduled) so user
   // messages always take priority.
@@ -517,6 +553,66 @@ function handleRendererMessage(msg: RendererToAgentMessage): void {
 
     case 'trace:detail': {
       handleTraceDetail(msg.traceId);
+      break;
+    }
+
+    case 'marketplace:list-installed': {
+      handleMarketplaceListInstalled();
+      break;
+    }
+
+    case 'marketplace:install': {
+      handleMarketplaceInstall(msg.packagePath);
+      break;
+    }
+
+    case 'marketplace:uninstall': {
+      handleMarketplaceUninstall(msg.name);
+      break;
+    }
+
+    case 'marketplace:get-package-info': {
+      handleMarketplaceGetPackageInfo(msg.packagePath);
+      break;
+    }
+
+    case 'node:list': {
+      handleNodeList();
+      break;
+    }
+
+    case 'node:add': {
+      handleNodeAdd(msg.label, msg.url, msg.apiKey);
+      break;
+    }
+
+    case 'node:remove': {
+      handleNodeRemove(msg.nodeId);
+      break;
+    }
+
+    case 'node:status': {
+      handleNodeStatus();
+      break;
+    }
+
+    case 'node:discover': {
+      handleNodeDiscover(msg.nodeId);
+      break;
+    }
+
+    case 'node:list-exposed-agents': {
+      handleNodeListExposed();
+      break;
+    }
+
+    case 'node:toggle-expose': {
+      handleNodeToggleExpose(msg.petId, msg.exposed);
+      break;
+    }
+
+    case 'node:update-exposure-config': {
+      handleNodeUpdateExposureConfig(msg);
       break;
     }
 
@@ -952,12 +1048,318 @@ function handleTraceDetail(traceId: string): void {
   sendToRenderer({ type: 'trace-detail-response', detail });
 }
 
+// ---------------------------------------------------------------------------
+// Marketplace handlers
+// ---------------------------------------------------------------------------
+
+function handleMarketplaceListInstalled(): void {
+  try {
+    const config = readConfig();
+    const summaries = getInstalledAgentSummaries(config.profiles ?? []);
+    const ipcSummaries: InstalledAgentSummaryIPC[] = summaries.map((s) => ({
+      name: s.name,
+      version: s.version,
+      author: s.author,
+      description: s.description,
+      category: s.category,
+      tags: s.tags,
+      depsOk: s.depsOk,
+      missingDeps: s.missingDeps,
+      active: s.active,
+      profileId: s.profileId,
+      installedAt: s.installedAt,
+    }));
+    sendToRenderer({ type: 'marketplace-list-response', agents: ipcSummaries });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[agent-process] marketplace:list-installed error:', msg);
+    sendToRenderer({ type: 'marketplace-list-response', agents: [] });
+  }
+}
+
+function handleMarketplaceInstall(packagePath: string): void {
+  try {
+    const addProfileToConfig = (profile: import('../shared/types').PetProfile): boolean => {
+      const config = readConfig();
+      const profiles = config.profiles ?? [];
+      const existingIdx = profiles.findIndex((p) => p.id === profile.id);
+      if (existingIdx >= 0) {
+        // Profile already exists - don't overwrite
+        return false;
+      }
+      profiles.push(profile);
+      updateProfilesConfig(profiles);
+      return true;
+    };
+
+    const result = marketplaceInstallAgent(packagePath, addProfileToConfig);
+    sendToRenderer({
+      type: 'marketplace-install-response',
+      success: result.success,
+      name: result.name,
+      error: result.error,
+      warnings: result.warnings,
+    });
+
+    // Notify agent to rebuild if profiles changed
+    if (result.success) {
+      handleProfilesUpdated();
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({
+      type: 'marketplace-install-response',
+      success: false,
+      error: msg,
+    });
+  }
+}
+
+function handleMarketplaceUninstall(name: string): void {
+  try {
+    const removeProfileFromConfig = (profileId: string): boolean => {
+      const config = readConfig();
+      const profiles = config.profiles ?? [];
+      const idx = profiles.findIndex((p) => p.id === profileId);
+      if (idx < 0) return false;
+      profiles.splice(idx, 1);
+      updateProfilesConfig(profiles);
+      return true;
+    };
+
+    const result = marketplaceUninstallAgent(name, removeProfileFromConfig);
+    sendToRenderer({
+      type: 'marketplace-uninstall-response',
+      success: result.success,
+      error: result.error,
+    });
+
+    // Notify agent to rebuild if profiles changed
+    if (result.success) {
+      handleProfilesUpdated();
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({
+      type: 'marketplace-uninstall-response',
+      success: false,
+      error: msg,
+    });
+  }
+}
+
+function handleMarketplaceGetPackageInfo(packagePath: string): void {
+  try {
+    const result = marketplaceReadPackageManifest(packagePath);
+    if (result.error || !result.manifest) {
+      sendToRenderer({
+        type: 'marketplace-package-info-response',
+        success: false,
+        error: result.error || 'Invalid manifest',
+      });
+      return;
+    }
+    const m = result.manifest;
+
+    const ipcManifest: AgentManifestIPC = {
+      name: m.name,
+      version: m.version,
+      author: m.author,
+      description: m.description,
+      category: m.category,
+      tags: m.tags,
+      dependencies: m.dependencies.map((d) => ({
+        pluginName: d.pluginName,
+        minVersion: d.minVersion,
+      })),
+      profile: m.profile,
+      readme: m.readme,
+      formatVersion: m.formatVersion,
+    };
+
+    sendToRenderer({
+      type: 'marketplace-package-info-response',
+      success: true,
+      manifest: ipcManifest,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({
+      type: 'marketplace-package-info-response',
+      success: false,
+      error: msg,
+    });
+  }
+}
+
 /**
  * Initialize the agent process.
  * Listens for the MessagePort from the main process, then starts the agent runtime.
  *
  * Supports an 'init' message for legacy mode and 'init-multi-pet' for PetManager mode.
  */
+
+// ---------------------------------------------------------------------------
+// Distributed Runtime Node handlers
+// ---------------------------------------------------------------------------
+
+/** Convert a RuntimeNode to IPC-safe format (no API key in response) */
+function runtimeNodeToIPC(node: RuntimeNode): NodeInfoIPC {
+  return {
+    id: node.id,
+    label: node.label,
+    url: node.url,
+    status: node.status,
+    latencyMs: node.latencyMs,
+    lastCheckedAt: node.lastCheckedAt,
+    agents: node.agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      description: a.description,
+      skills: a.skills,
+    })),
+    lastDiscoveredAt: node.lastDiscoveredAt,
+  };
+}
+
+function handleNodeList(): void {
+  const nodes = getNodes();
+  sendToRenderer({
+    type: 'node-list-response',
+    nodes: nodes.map(runtimeNodeToIPC),
+  });
+}
+
+function handleNodeAdd(label: string, url: string, apiKey: string): void {
+  try {
+    const node = registerNode(label, url, apiKey);
+    // Persist updated node list
+    const nodesConfig = readConfig().nodes ?? { nodes: [], exposure: { enabled: false, port: 3100, apiKey: '', exposedAgents: [] } };
+    nodesConfig.nodes = getNodesForPersistence();
+    updateNodesConfig(nodesConfig);
+    sendToRenderer({ type: 'node-add-response', success: true, nodeId: node.id });
+    // Trigger health check for the new node
+    checkNodeHealth(node.id).catch((err: unknown) => {
+      console.error('[agent-process] Node health check failed:', err);
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'node-add-response', success: false, error: msg });
+  }
+}
+
+function handleNodeRemove(nodeId: string): void {
+  try {
+    const removed = removeNode(nodeId);
+    if (removed) {
+      // Persist updated node list
+      const nodesConfig = readConfig().nodes ?? { nodes: [], exposure: { enabled: false, port: 3100, apiKey: '', exposedAgents: [] } };
+      nodesConfig.nodes = getNodesForPersistence();
+      updateNodesConfig(nodesConfig);
+    }
+    sendToRenderer({ type: 'node-remove-response', success: removed });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'node-remove-response', success: false, error: msg });
+  }
+}
+
+function handleNodeStatus(): void {
+  const nodes = getNodes();
+  sendToRenderer({
+    type: 'node-status-response',
+    nodes: nodes.map(runtimeNodeToIPC),
+  });
+}
+
+async function handleNodeDiscover(nodeId: string): Promise<void> {
+  const node = getNode(nodeId);
+  if (!node) {
+    sendToRenderer({ type: 'node-discover-response', success: false, error: 'Node not found' });
+    return;
+  }
+
+  try {
+    const agents = await discoverNodeAgents(node);
+    const ipcAgents: RemoteAgentInfoIPC[] = agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      description: a.description,
+      skills: a.skills,
+    }));
+    sendToRenderer({ type: 'node-discover-response', success: true, agents: ipcAgents });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'node-discover-response', success: false, error: msg });
+  }
+}
+
+function handleNodeListExposed(): void {
+  const nodesConfig = readConfig().nodes ?? { nodes: [], exposure: { enabled: false, port: 3100, apiKey: '', exposedAgents: [] } };
+  const allPetIds = getProfileIds();
+  const exposedAgents = filterExposedAgents(nodesConfig.exposure, allPetIds);
+  const ipcExposed: ExposedAgentIPC[] = exposedAgents.map((a) => ({ petId: a.petId, exposed: a.exposed }));
+  sendToRenderer({ type: 'node-list-exposed-response', exposedAgents: ipcExposed });
+}
+
+function handleNodeToggleExpose(petId: string, exposed: boolean): void {
+  try {
+    const nodesConfig = readConfig().nodes ?? { nodes: [], exposure: { enabled: false, port: 3100, apiKey: '', exposedAgents: [] } };
+    toggleAgentExposure(nodesConfig.exposure, petId, exposed);
+    updateNodesConfig(nodesConfig);
+    setExposureConfig(nodesConfig.exposure);
+    sendToRenderer({ type: 'node-toggle-expose-response', success: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'node-toggle-expose-response', success: false, error: msg });
+  }
+}
+
+function handleNodeUpdateExposureConfig(
+  msg: { enabled?: boolean; port?: number; apiKey?: string }
+): void {
+  try {
+    const nodesConfig = readConfig().nodes ?? { nodes: [], exposure: { enabled: false, port: 3100, apiKey: '', exposedAgents: [] } };
+    if (msg.enabled !== undefined) nodesConfig.exposure.enabled = msg.enabled;
+    if (msg.port !== undefined) nodesConfig.exposure.port = msg.port;
+    if (msg.apiKey !== undefined) nodesConfig.exposure.apiKey = msg.apiKey;
+    updateNodesConfig(nodesConfig);
+    restartRuntimeNode(nodesConfig.exposure);
+    sendToRenderer({ type: 'node-update-exposure-response', success: true });
+  } catch (err: unknown) {
+    const msg2 = err instanceof Error ? err.message : String(err);
+    sendToRenderer({ type: 'node-update-exposure-response', success: false, error: msg2 });
+  }
+}
+
+/**
+ * Initialize the distributed runtime node subsystem.
+ * Called during PetManager initialization.
+ */
+function initRuntimeNodes(): void {
+  const nodesConfig = readConfig().nodes ?? { nodes: [], exposure: { enabled: false, port: 3100, apiKey: '', exposedAgents: [] } };
+
+  // Load persisted nodes
+  if (nodesConfig.nodes.length > 0) {
+    loadNodes(nodesConfig.nodes);
+  }
+
+  // Start runtime node server if enabled
+  if (nodesConfig.exposure.enabled) {
+    startRuntimeNode(nodesConfig.exposure);
+  }
+
+  // Set exposure config
+  setExposureConfig(nodesConfig.exposure);
+
+  // Start health checks for registered nodes
+  if (nodesConfig.nodes.length > 0) {
+    startHealthChecks(30000);
+  }
+}
+
 process.parentPort.on('message', (event: unknown) => {
   const msgEvent = event as { data: { type: string }; ports: MessagePortMain[] };
   const msg = msgEvent.data;
