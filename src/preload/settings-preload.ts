@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot, TraceRow, Trace, Span } from '../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, PetProfile, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot, TraceRow, Trace, Span, WorkspaceInfo, InstalledAgentSummaryIPC, AgentManifestIPC, NodeInfoIPC, RemoteAgentInfoIPC, ExposedAgentIPC } from '../shared/types';
 
 /**
  * Preload script for the settings BrowserWindow.
@@ -188,6 +188,154 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, payload: { traceId: string; status: string }) => callback(payload);
     ipcRenderer.on('trace:completed', listener);
     return () => ipcRenderer.removeListener('trace:completed', listener);
+  },
+
+  // Marketplace IPC
+  marketplaceListInstalled(): Promise<InstalledAgentSummaryIPC[]> {
+    return ipcRenderer.invoke('marketplace:list-installed') as Promise<InstalledAgentSummaryIPC[]>;
+  },
+
+  marketplaceInstall(packagePath: string): Promise<{ success: boolean; name?: string; error?: string; warnings?: string[] }> {
+    return ipcRenderer.invoke('marketplace:install', packagePath) as Promise<{
+      success: boolean;
+      name?: string;
+      error?: string;
+      warnings?: string[];
+    }>;
+  },
+
+  marketplaceUninstall(name: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('marketplace:uninstall', name) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  marketplaceGetPackageInfo(packagePath: string): Promise<{ success: boolean; manifest?: AgentManifestIPC; error?: string }> {
+    return ipcRenderer.invoke('marketplace:get-package-info', packagePath) as Promise<{
+      success: boolean;
+      manifest?: AgentManifestIPC;
+      error?: string;
+    }>;
+  },
+
+  // Workspace management IPC
+  listWorkspaces(): Promise<{ success: boolean; error?: string; data?: WorkspaceInfo[] }> {
+    return ipcRenderer.invoke('workspace:list') as Promise<{
+      success: boolean;
+      error?: string;
+      data?: WorkspaceInfo[];
+    }>;
+  },
+
+  createWorkspace(name: string, setAsDefault?: boolean): Promise<{ success: boolean; error?: string; data?: WorkspaceInfo }> {
+    return ipcRenderer.invoke('workspace:create', name, setAsDefault) as Promise<{
+      success: boolean;
+      error?: string;
+      data?: WorkspaceInfo;
+    }>;
+  },
+
+  deleteWorkspace(workspaceId: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('workspace:delete', workspaceId) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  renameWorkspace(workspaceId: string, newName: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('workspace:rename', workspaceId, newName) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  switchWorkspace(workspaceId: string): Promise<{ success: boolean; error?: string; data?: WorkspaceInfo }> {
+    return ipcRenderer.invoke('workspace:switch', workspaceId) as Promise<{
+      success: boolean;
+      error?: string;
+      data?: WorkspaceInfo;
+    }>;
+  },
+
+  exportWorkspace(workspaceId: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('workspace:export', workspaceId) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  importWorkspace(): Promise<{ success: boolean; error?: string; data?: WorkspaceInfo }> {
+    return ipcRenderer.invoke('workspace:import') as Promise<{
+      success: boolean;
+      error?: string;
+      data?: WorkspaceInfo;
+    }>;
+  },
+
+  setDefaultWorkspace(workspaceId: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('workspace:set-default', workspaceId) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  getActiveWorkspace(): Promise<{ success: boolean; error?: string; data?: WorkspaceInfo }> {
+    return ipcRenderer.invoke('workspace:get-active') as Promise<{
+      success: boolean;
+      error?: string;
+      data?: WorkspaceInfo;
+    }>;
+  },
+
+  // Distributed Runtime Node IPC
+  nodeList(): Promise<{ nodes: NodeInfoIPC[] }> {
+    return ipcRenderer.invoke('node:list') as Promise<{ nodes: NodeInfoIPC[] }>;
+  },
+
+  nodeAdd(label: string, url: string, apiKey: string): Promise<{ success: boolean; nodeId?: string; error?: string }> {
+    return ipcRenderer.invoke('node:add', label, url, apiKey) as Promise<{
+      success: boolean;
+      nodeId?: string;
+      error?: string;
+    }>;
+  },
+
+  nodeRemove(nodeId: string): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('node:remove', nodeId) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  nodeStatus(): Promise<{ nodes: NodeInfoIPC[] }> {
+    return ipcRenderer.invoke('node:status') as Promise<{ nodes: NodeInfoIPC[] }>;
+  },
+
+  nodeDiscover(nodeId: string): Promise<{ success: boolean; agents?: RemoteAgentInfoIPC[]; error?: string }> {
+    return ipcRenderer.invoke('node:discover', nodeId) as Promise<{
+      success: boolean;
+      agents?: RemoteAgentInfoIPC[];
+      error?: string;
+    }>;
+  },
+
+  nodeListExposed(): Promise<{ exposedAgents: ExposedAgentIPC[] }> {
+    return ipcRenderer.invoke('node:list-exposed-agents') as Promise<{ exposedAgents: ExposedAgentIPC[] }>;
+  },
+
+  nodeToggleExpose(petId: string, exposed: boolean): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('node:toggle-expose', petId, exposed) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
+  },
+
+  nodeUpdateExposure(config: { enabled?: boolean; port?: number; apiKey?: string }): Promise<{ success: boolean; error?: string }> {
+    return ipcRenderer.invoke('node:update-exposure-config', config) as Promise<{
+      success: boolean;
+      error?: string;
+    }>;
   },
 
   closeWindow(): void {

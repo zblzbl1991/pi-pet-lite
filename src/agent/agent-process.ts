@@ -63,8 +63,8 @@ import {
   toggleAgentExposure,
   disposeDiscovery,
   filterExposedAgents,
-} from './runtime';
-import type { RuntimeNode } from './runtime';
+} from './runtime/index';
+import type { RuntimeNode } from './runtime/index';
 import { getProfileIds } from './profiles';
 import path from 'path';
 

@@ -206,6 +206,26 @@ export interface AppConfig {
   riskLevel: RiskLevel;
   /** User-defined profile overrides. Merged over built-in profiles at runtime. */
   profiles?: PetProfile[];
+  /** Distributed runtime node configuration */
+  nodes?: NodesPersistConfig;
+}
+
+/** Persisted node configuration (stored in config file, no status) */
+export interface NodesPersistConfig {
+  /** Registered remote nodes */
+  nodes: Array<{
+    id: string;
+    label: string;
+    url: string;
+    apiKey: string;
+  }>;
+  /** Node exposure settings */
+  exposure: {
+    enabled: boolean;
+    port: number;
+    apiKey: string;
+    exposedAgents: Array<{ petId: string; exposed: boolean }>;
+  };
 }
 
 /** Messages sent from renderer to agent via MessagePort */
@@ -241,7 +261,19 @@ export type RendererToAgentMessage =
   | { type: 'workflow:status'; runId: string }
   | { type: 'workflow:history' }
   | { type: 'trace:list'; offset: number; limit: number; status?: string; petId?: string }
-  | { type: 'trace:detail'; traceId: string };
+  | { type: 'trace:detail'; traceId: string }
+  | { type: 'marketplace:list-installed' }
+  | { type: 'marketplace:install'; packagePath: string }
+  | { type: 'marketplace:uninstall'; name: string }
+  | { type: 'marketplace:get-package-info'; packagePath: string }
+  | { type: 'node:list' }
+  | { type: 'node:add'; label: string; url: string; apiKey: string }
+  | { type: 'node:remove'; nodeId: string }
+  | { type: 'node:status' }
+  | { type: 'node:discover'; nodeId: string }
+  | { type: 'node:list-exposed-agents' }
+  | { type: 'node:toggle-expose'; petId: string; exposed: boolean }
+  | { type: 'node:update-exposure-config'; enabled?: boolean; port?: number; apiKey?: string };
 
 /** Messages sent from agent to renderer via MessagePort */
 export type AgentToRendererMessage =
@@ -280,7 +312,19 @@ export type AgentToRendererMessage =
   | { type: 'workflow-history-response'; runs: WorkflowRunSnapshot[] }
   | { type: 'trace-list-response'; traces: TraceRow[]; total: number }
   | { type: 'trace-detail-response'; detail: { trace: Trace; spans: Span[] } | null }
-  | { type: 'trace-completed'; traceId: string; status: string };
+  | { type: 'trace-completed'; traceId: string; status: string }
+  | { type: 'marketplace-list-response'; agents: InstalledAgentSummaryIPC[] }
+  | { type: 'marketplace-install-response'; success: boolean; name?: string; error?: string; warnings?: string[] }
+  | { type: 'marketplace-uninstall-response'; success: boolean; error?: string }
+  | { type: 'marketplace-package-info-response'; success: boolean; manifest?: AgentManifestIPC; error?: string }
+  | { type: 'node-list-response'; nodes: NodeInfoIPC[] }
+  | { type: 'node-add-response'; success: boolean; nodeId?: string; error?: string }
+  | { type: 'node-remove-response'; success: boolean; error?: string }
+  | { type: 'node-status-response'; nodes: NodeInfoIPC[] }
+  | { type: 'node-discover-response'; success: boolean; agents?: RemoteAgentInfoIPC[]; error?: string }
+  | { type: 'node-list-exposed-response'; exposedAgents: ExposedAgentIPC[] }
+  | { type: 'node-toggle-expose-response'; success: boolean; error?: string }
+  | { type: 'node-update-exposure-response'; success: boolean; error?: string };
 
 /** Pet status report for IPC communication */
 export interface PetStatusReportMessage {
@@ -351,6 +395,29 @@ export interface ChatElectronAPI {
   onSlideOut: (callback: () => void) => () => void;
   slideOutComplete: () => void;
   closeChat: () => void;
+}
+
+// ---- Workspace Types ----
+
+/** A single workspace entry in the workspace registry */
+export interface WorkspaceInfo {
+  /** Unique workspace identifier */
+  id: string;
+  /** Human-readable workspace name */
+  name: string;
+  /** Absolute path to the workspace data directory */
+  path: string;
+  /** ISO timestamp of creation */
+  createdAt: number;
+  /** Whether this is the default workspace (loaded on startup) */
+  isDefault: boolean;
+}
+
+/** IPC response wrapper for workspace operations */
+export interface WorkspaceResponse<T> {
+  success: boolean;
+  error?: string;
+  data?: T;
 }
 
 // ---- Blackboard Store Types ----
@@ -527,4 +594,78 @@ export interface Span {
   endTime: number | null;
   status: 'running' | 'ok' | 'error';
   attributes: Record<string, unknown>;
+}
+
+// ---- Marketplace Types (IPC-safe) ----
+
+/** A dependency on a tool plugin (IPC-safe) */
+export interface AgentDependencyIPC {
+  pluginName: string;
+  minVersion?: string;
+}
+
+/** Agent manifest for IPC transport (mirrors AgentManifest but without internal imports) */
+export interface AgentManifestIPC {
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  category: string;
+  tags: string[];
+  dependencies: AgentDependencyIPC[];
+  profile: PetProfile;
+  readme?: string;
+  formatVersion?: number;
+}
+
+/** Summary of an installed agent for IPC transport */
+export interface InstalledAgentSummaryIPC {
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  category: string;
+  tags: string[];
+  depsOk: boolean;
+  missingDeps: string[];
+  active: boolean;
+  profileId: string;
+  installedAt: number;
+}
+
+// ---- Distributed Runtime Node Types (IPC-safe) ----
+
+/** Status of a runtime node */
+export const RuntimeNodeStatus = {
+  ONLINE: 'online',
+  OFFLINE: 'offline',
+  CHECKING: 'checking',
+} as const;
+export type RuntimeNodeStatus = (typeof RuntimeNodeStatus)[keyof typeof RuntimeNodeStatus];
+
+/** Node info for IPC transport (no secrets) */
+export interface NodeInfoIPC {
+  id: string;
+  label: string;
+  url: string;
+  status: RuntimeNodeStatus;
+  latencyMs: number | null;
+  lastCheckedAt: number | null;
+  agents: RemoteAgentInfoIPC[];
+  lastDiscoveredAt: number | null;
+}
+
+/** Remote agent info for IPC transport */
+export interface RemoteAgentInfoIPC {
+  id: string;
+  name: string;
+  role: string;
+  description?: string;
+  skills?: { id: string; name: string; description?: string }[];
+}
+
+/** Exposed agent entry for IPC transport */
+export interface ExposedAgentIPC {
+  petId: string;
+  exposed: boolean;
 }

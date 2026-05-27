@@ -23,6 +23,12 @@ import type {
   TraceRow,
   Trace,
   Span,
+  WorkspaceInfo,
+  InstalledAgentSummaryIPC,
+  AgentManifestIPC,
+  NodeInfoIPC,
+  RemoteAgentInfoIPC,
+  ExposedAgentIPC,
 } from '../shared/types';
 
 /**
@@ -57,6 +63,29 @@ export interface SettingsElectronAPI {
   traceList: (options: { offset: number; limit: number; status?: string; petId?: string }) => Promise<{ traces: TraceRow[]; total: number }>;
   traceDetail: (traceId: string) => Promise<{ trace: Trace; spans: Span[] } | null>;
   onTraceCompleted: (callback: (payload: { traceId: string; status: string }) => void) => () => void;
+  marketplaceListInstalled: () => Promise<InstalledAgentSummaryIPC[]>;
+  marketplaceInstall: (packagePath: string) => Promise<{ success: boolean; name?: string; error?: string; warnings?: string[] }>;
+  marketplaceUninstall: (name: string) => Promise<{ success: boolean; error?: string }>;
+  marketplaceGetPackageInfo: (packagePath: string) => Promise<{ success: boolean; manifest?: AgentManifestIPC; error?: string }>;
+  // Workspace management
+  listWorkspaces: () => Promise<{ success: boolean; error?: string; data?: WorkspaceInfo[] }>;
+  createWorkspace: (name: string, setAsDefault?: boolean) => Promise<{ success: boolean; error?: string; data?: WorkspaceInfo }>;
+  deleteWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
+  renameWorkspace: (workspaceId: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+  switchWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string; data?: WorkspaceInfo }>;
+  exportWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
+  importWorkspace: () => Promise<{ success: boolean; error?: string; data?: WorkspaceInfo }>;
+  setDefaultWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
+  getActiveWorkspace: () => Promise<{ success: boolean; error?: string; data?: WorkspaceInfo }>;
+  // Distributed runtime node management
+  nodeList: () => Promise<{ nodes: NodeInfoIPC[] }>;
+  nodeAdd: (label: string, url: string, apiKey: string) => Promise<{ success: boolean; nodeId?: string; error?: string }>;
+  nodeRemove: (nodeId: string) => Promise<{ success: boolean; error?: string }>;
+  nodeStatus: () => Promise<{ nodes: NodeInfoIPC[] }>;
+  nodeDiscover: (nodeId: string) => Promise<{ success: boolean; agents?: RemoteAgentInfoIPC[]; error?: string }>;
+  nodeListExposed: () => Promise<{ exposedAgents: ExposedAgentIPC[] }>;
+  nodeToggleExpose: (petId: string, exposed: boolean) => Promise<{ success: boolean; error?: string }>;
+  nodeUpdateExposure: (config: { enabled?: boolean; port?: number; apiKey?: string }) => Promise<{ success: boolean; error?: string }>;
   closeWindow: () => void;
 }
 

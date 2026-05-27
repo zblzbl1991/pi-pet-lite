@@ -287,3 +287,36 @@ export const IPC_WORKFLOW_HISTORY = 'workflow:history';
 export const IPC_TRACE_LIST = 'trace:list';
 export const IPC_TRACE_DETAIL = 'trace:detail';
 export const IPC_TRACE_COMPLETED = 'trace:completed';
+
+/** IPC channels for workspace management (main <-> renderer) */
+export const IPC_WORKSPACE_LIST = 'workspace:list';
+export const IPC_WORKSPACE_CREATE = 'workspace:create';
+export const IPC_WORKSPACE_DELETE = 'workspace:delete';
+export const IPC_WORKSPACE_RENAME = 'workspace:rename';
+export const IPC_WORKSPACE_SWITCH = 'workspace:switch';
+export const IPC_WORKSPACE_EXPORT = 'workspace:export';
+export const IPC_WORKSPACE_IMPORT = 'workspace:import';
+export const IPC_WORKSPACE_SET_DEFAULT = 'workspace:set-default';
+export const IPC_WORKSPACE_GET_ACTIVE = 'workspace:get-active';
+
+/** Workspace data directory name under userData */
+export const WORKSPACE_DIR_NAME = 'workspaces';
+
+/** Workspace registry file name */
+export const WORKSPACE_REGISTRY_FILENAME = 'workspace-registry.json';
+
+/** IPC channels for marketplace operations (main <-> renderer <-> agent) */
+export const IPC_MARKETPLACE_LIST_INSTALLED = 'marketplace:list-installed';
+export const IPC_MARKETPLACE_INSTALL = 'marketplace:install';
+export const IPC_MARKETPLACE_UNINSTALL = 'marketplace:uninstall';
+export const IPC_MARKETPLACE_GET_PACKAGE_INFO = 'marketplace:get-package-info';
+
+/** IPC channels for distributed runtime node operations (main <-> renderer <-> agent) */
+export const IPC_NODE_LIST = 'node:list';
+export const IPC_NODE_ADD = 'node:add';
+export const IPC_NODE_REMOVE = 'node:remove';
+export const IPC_NODE_STATUS = 'node:status';
+export const IPC_NODE_DISCOVER = 'node:discover';
+export const IPC_NODE_LIST_EXPOSED = 'node:list-exposed-agents';
+export const IPC_NODE_TOGGLE_EXPOSE = 'node:toggle-expose';
+export const IPC_NODE_UPDATE_EXPOSURE = 'node:update-exposure-config';

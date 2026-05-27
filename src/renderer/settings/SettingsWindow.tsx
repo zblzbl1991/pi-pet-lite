@@ -27,8 +27,16 @@ import {
   SkipForward,
   Loader,
   Activity,
+  ShoppingBag,
+  Package,
+  FolderOpen,
+  Layers,
+  Download,
+  Upload,
+  Star,
+  Server,
 } from 'lucide-react';
-import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole, AgentCardInfo, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot, StepResult } from '../../shared/types';
+import type { LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, PetRole, AgentCardInfo, PluginSummary, WorkflowDefinition, WorkflowRunSnapshot, StepResult, InstalledAgentSummaryIPC, AgentManifestIPC, WorkspaceInfo, NodeInfoIPC, ExposedAgentIPC } from '../../shared/types';
 import { TOOL_GROUPS, CUSTOM_PROFILE_DEFAULT_PROMPT, CUSTOM_PROFILE_DEFAULT_TOOLS } from '../../shared/constants';
 import { TracesTab } from './TracesTab';
 
@@ -103,7 +111,7 @@ const PROVIDERS: ProviderOption[] = [
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 
 /** Sidebar navigation sections */
-type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets' | 'plugins' | 'workflows' | 'traces';
+type Section = 'llm' | 'browser' | 'notifications' | 'permissions' | 'pets' | 'plugins' | 'workspaces' | 'workflows' | 'traces' | 'marketplace' | 'nodes';
 
 const sharedStyles: Record<string, React.CSSProperties> = {
   label: {
@@ -1417,6 +1425,379 @@ function PluginsSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Workspaces Section — Workspace management
+// ---------------------------------------------------------------------------
+
+function WorkspacesSection() {
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmSwitchId, setConfirmSwitchId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [listRes, activeRes] = await Promise.all([
+        window.settingsAPI.listWorkspaces(),
+        window.settingsAPI.getActiveWorkspace(),
+      ]);
+      if (listRes.data) setWorkspaces(listRes.data);
+      if (activeRes.data) setActiveWorkspace(activeRes.data);
+    } catch {
+      setError('Failed to load workspaces');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setCreating(true);
+    setError('');
+    try {
+      const res = await window.settingsAPI.createWorkspace(name);
+      if (res.success) {
+        setNewName('');
+        await load();
+      } else {
+        setError(res.error || 'Failed to create workspace');
+      }
+    } catch {
+      setError('Failed to create workspace');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleRename = async (id: string) => {
+    const name = renameValue.trim();
+    if (!name) { setRenamingId(null); return; }
+    setError('');
+    try {
+      const res = await window.settingsAPI.renameWorkspace(id, name);
+      if (res.success) {
+        setRenamingId(null);
+        await load();
+      } else {
+        setError(res.error || 'Failed to rename workspace');
+      }
+    } catch {
+      setError('Failed to rename workspace');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    setError('');
+    try {
+      const res = await window.settingsAPI.deleteWorkspace(id);
+      if (res.success) {
+        setConfirmDeleteId(null);
+        await load();
+      } else {
+        setError(res.error || 'Failed to delete workspace');
+      }
+    } catch {
+      setError('Failed to delete workspace');
+    }
+  };
+
+  const handleSwitch = async (id: string) => {
+    setError('');
+    try {
+      const res = await window.settingsAPI.switchWorkspace(id);
+      if (res.success) {
+        setConfirmSwitchId(null);
+        await load();
+      } else {
+        setError(res.error || 'Failed to switch workspace');
+      }
+    } catch {
+      setError('Failed to switch workspace');
+    }
+  };
+
+  const handleSetDefault = async (id: string) => {
+    setError('');
+    try {
+      const res = await window.settingsAPI.setDefaultWorkspace(id);
+      if (res.success) { await load(); }
+      else { setError(res.error || 'Failed to set default'); }
+    } catch {
+      setError('Failed to set default');
+    }
+  };
+
+  const handleExport = async (id: string) => {
+    setError('');
+    try {
+      const res = await window.settingsAPI.exportWorkspace(id);
+      if (!res.success) setError(res.error || 'Export failed');
+    } catch {
+      setError('Export failed');
+    }
+  };
+
+  const handleImport = async () => {
+    setError('');
+    try {
+      const res = await window.settingsAPI.importWorkspace();
+      if (res.success) { await load(); }
+      else { setError(res.error || 'Import failed'); }
+    } catch {
+      setError('Import failed');
+    }
+  };
+
+  if (loading) {
+    return <div style={{ color: 'var(--text-secondary)', padding: 24 }}>Loading workspaces...</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>工作区</h2>
+        <button
+          onClick={handleImport}
+          style={{
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '6px 12px',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          <Upload size={12} strokeWidth={1.5} /> 导入工作区
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ padding: '8px 12px', background: 'var(--danger-bg)', borderRadius: 8, color: 'var(--danger)', fontSize: 12 }}>
+          {error}
+        </div>
+      )}
+
+      {/* Create new workspace */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+          placeholder="新工作区名称..."
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            color: 'var(--text-primary)',
+            fontSize: 13,
+            outline: 'none',
+          }}
+        />
+        <button
+          onClick={handleCreate}
+          disabled={creating || !newName.trim()}
+          style={{
+            background: 'var(--brand)',
+            border: 'none',
+            borderRadius: 8,
+            padding: '8px 16px',
+            color: '#fff',
+            cursor: creating || !newName.trim() ? 'not-allowed' : 'pointer',
+            opacity: creating || !newName.trim() ? 0.5 : 1,
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          <Plus size={14} strokeWidth={1.5} /> 创建
+        </button>
+      </div>
+
+      {/* Workspace list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {workspaces.map((ws) => {
+          const isActive = ws.id === activeWorkspace?.id;
+          const isRenaming = renamingId === ws.id;
+          const isConfirmDelete = confirmDeleteId === ws.id;
+          const isConfirmSwitch = confirmSwitchId === ws.id;
+
+          return (
+            <div
+              key={ws.id}
+              style={{
+                padding: 12,
+                background: isActive ? 'var(--brand-bg)' : 'var(--bg-secondary)',
+                border: `1px solid ${isActive ? 'var(--brand)' : 'var(--border)'}`,
+                borderRadius: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {isRenaming ? (
+                  <input
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRename(ws.id);
+                      if (e.key === 'Escape') setRenamingId(null);
+                    }}
+                    onBlur={() => handleRename(ws.id)}
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      padding: '4px 8px',
+                      background: 'var(--bg-tertiary)',
+                      border: '1px solid var(--brand)',
+                      borderRadius: 6,
+                      color: 'var(--text-primary)',
+                      fontSize: 13,
+                      outline: 'none',
+                    }}
+                  />
+                ) : (
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
+                    {ws.name}
+                  </span>
+                )}
+
+                {isActive && (
+                  <span style={{
+                    fontSize: 10,
+                    padding: '2px 8px',
+                    background: 'var(--brand)',
+                    color: '#fff',
+                    borderRadius: 999,
+                    fontWeight: 500,
+                  }}>
+                    当前
+                  </span>
+                )}
+
+                {ws.isDefault && (
+                  <Star size={14} strokeWidth={1.5} style={{ color: 'var(--warning)', fill: 'var(--warning)' }} />
+                )}
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {!isActive && (
+                  <button
+                    onClick={() => setConfirmSwitchId(ws.id)}
+                    style={actionBtnStyle}
+                  >
+                    切换
+                  </button>
+                )}
+                {!isRenaming && (
+                  <button
+                    onClick={() => { setRenamingId(ws.id); setRenameValue(ws.name); }}
+                    style={actionBtnStyle}
+                  >
+                    重命名
+                  </button>
+                )}
+                <button onClick={() => handleSetDefault(ws.id)} style={actionBtnStyle}>
+                  {ws.isDefault ? '取消默认' : '设为默认'}
+                </button>
+                <button onClick={() => handleExport(ws.id)} style={actionBtnStyle}>
+                  <Download size={12} strokeWidth={1.5} /> 导出
+                </button>
+                {workspaces.length > 1 && (
+                  <button
+                    onClick={() => setConfirmDeleteId(ws.id)}
+                    style={{ ...actionBtnStyle, color: 'var(--danger)' }}
+                  >
+                    <Trash2 size={12} strokeWidth={1.5} /> 删除
+                  </button>
+                )}
+              </div>
+
+              {/* Confirm delete dialog */}
+              {isConfirmDelete && (
+                <div style={{
+                  padding: '8px 12px',
+                  background: 'var(--danger-bg)',
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 12,
+                  color: 'var(--danger)',
+                }}>
+                  <AlertTriangle size={14} strokeWidth={1.5} />
+                  <span>确定要删除 "{ws.name}" 吗？此操作不可撤销。</span>
+                  <button onClick={() => handleDelete(ws.id)} style={confirmBtnStyle}>删除</button>
+                  <button onClick={() => setConfirmDeleteId(null)} style={confirmBtnStyle}>取消</button>
+                </div>
+              )}
+
+              {/* Confirm switch dialog */}
+              {isConfirmSwitch && (
+                <div style={{
+                  padding: '8px 12px',
+                  background: 'var(--brand-bg)',
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 12,
+                  color: 'var(--brand)',
+                }}>
+                  <AlertTriangle size={14} strokeWidth={1.5} />
+                  <span>切换工作区将重启 Agent 进程。继续？</span>
+                  <button onClick={() => handleSwitch(ws.id)} style={confirmBtnStyle}>切换</button>
+                  <button onClick={() => setConfirmSwitchId(null)} style={confirmBtnStyle}>取消</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const actionBtnStyle: React.CSSProperties = {
+  background: 'var(--bg-tertiary)',
+  border: '1px solid var(--border)',
+  borderRadius: 6,
+  padding: '4px 8px',
+  color: 'var(--text-secondary)',
+  cursor: 'pointer',
+  fontSize: 11,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+};
+
+const confirmBtnStyle: React.CSSProperties = {
+  background: 'var(--bg-tertiary)',
+  border: '1px solid var(--border)',
+  borderRadius: 6,
+  padding: '3px 10px',
+  cursor: 'pointer',
+  fontSize: 11,
+  color: 'var(--text-primary)',
+};
+
+// ---------------------------------------------------------------------------
 // Workflows Section — Workflow management
 // ---------------------------------------------------------------------------
 
@@ -1960,6 +2341,752 @@ function WorkflowsSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Marketplace Section — Agent package management
+// ---------------------------------------------------------------------------
+
+function MarketplaceSection() {
+  const [agents, setAgents] = useState<InstalledAgentSummaryIPC[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [installPath, setInstallPath] = useState('');
+  const [showInstallForm, setShowInstallForm] = useState(false);
+  const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [packageInfo, setPackageInfo] = useState<AgentManifestIPC | null>(null);
+  const [loadingInfo, setLoadingInfo] = useState(false);
+
+  const loadAgents = useCallback(async () => {
+    if (!window.settingsAPI?.marketplaceListInstalled) return;
+    try {
+      const list = await window.settingsAPI.marketplaceListInstalled();
+      setAgents(list ?? []);
+    } catch {
+      // Marketplace API not available
+    }
+    setHasLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    loadAgents();
+  }, [loadAgents]);
+
+  const handleInstall = useCallback(async () => {
+    if (!installPath.trim()) return;
+    setSaveMessage('正在安装...');
+    try {
+      const result = await window.settingsAPI?.marketplaceInstall?.(installPath.trim());
+      if (result?.success) {
+        setSaveMessage(`Agent "${result.name || installPath}" 安装成功${result.warnings?.length ? '（警告: ' + result.warnings.join(', ') + '）' : ''}`);
+        setInstallPath('');
+        setShowInstallForm(false);
+        await loadAgents();
+      } else {
+        setSaveMessage(result?.error ?? '安装失败');
+      }
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : '安装失败');
+    }
+    setTimeout(() => setSaveMessage(''), 5000);
+  }, [installPath, loadAgents]);
+
+  const handleUninstall = useCallback(async (name: string) => {
+    setSaveMessage('');
+    try {
+      const result = await window.settingsAPI?.marketplaceUninstall?.(name);
+      if (result?.success) {
+        setSaveMessage(`Agent "${name}" 已卸载`);
+        setConfirmUninstall(null);
+        setSelectedAgent(null);
+        await loadAgents();
+      } else {
+        setSaveMessage(result?.error ?? '卸载失败');
+      }
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : '卸载失败');
+    }
+    setTimeout(() => setSaveMessage(''), 3000);
+  }, [loadAgents]);
+
+  const handleGetPackageInfo = useCallback(async (pkgPath: string) => {
+    if (!pkgPath.trim()) return;
+    setLoadingInfo(true);
+    setPackageInfo(null);
+    try {
+      const result = await window.settingsAPI?.marketplaceGetPackageInfo?.(pkgPath.trim());
+      if (result?.success && result.manifest) {
+        setPackageInfo(result.manifest);
+      } else {
+        setSaveMessage(result?.error ?? '无法读取包信息');
+        setTimeout(() => setSaveMessage(''), 3000);
+      }
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : '读取失败');
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+    setLoadingInfo(false);
+  }, []);
+
+  const handleInstallWithInfo = useCallback(async () => {
+    if (!installPath.trim()) return;
+    setSaveMessage('正在安装...');
+    try {
+      const result = await window.settingsAPI?.marketplaceInstall?.(installPath.trim());
+      if (result?.success) {
+        setSaveMessage(`Agent "${result.name || installPath}" 安装成功`);
+        setInstallPath('');
+        setShowInstallForm(false);
+        setPackageInfo(null);
+        await loadAgents();
+      } else {
+        setSaveMessage(result?.error ?? '安装失败');
+      }
+    } catch (err: unknown) {
+      setSaveMessage(err instanceof Error ? err.message : '安装失败');
+    }
+    setTimeout(() => setSaveMessage(''), 5000);
+  }, [installPath, loadAgents]);
+
+  if (!hasLoaded) {
+    return <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 'var(--space-10)' }}>加载中...</div>;
+  }
+
+  const selected = selectedAgent ? agents.find((a) => a.name === selectedAgent) : null;
+
+  const categoryColors: Record<string, string> = {
+    productivity: 'var(--success)',
+    development: 'var(--brand)',
+    research: 'var(--warning)',
+    creative: 'var(--role-analyst)',
+  };
+
+  return (
+    <>
+      <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', marginBottom: 'var(--space-5)', color: 'var(--text-primary)' }}>
+        Marketplace
+      </div>
+
+      {/* Installed agents list */}
+      {agents.length === 0 && !showInstallForm && (
+        <div style={{
+          padding: 'var(--space-6)', textAlign: 'center',
+          background: 'var(--bg-elevated)', borderRadius: 'var(--radius-nav)',
+          border: `1px solid var(--border-subtle)`,
+        }}>
+          <Package size={24} strokeWidth={1.5} style={{ color: 'var(--text-tertiary)', marginBottom: 'var(--space-3)' }} />
+          <div style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-2)' }}>
+            暂无已安装的 Agent
+          </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-4)' }}>
+            从本地 .clawd-agent 目录或 manifest.json 文件安装 agent 包。
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+        {agents.map((agent) => {
+          const isSelected = selectedAgent === agent.name;
+          const catColor = categoryColors[agent.category] ?? 'var(--brand)';
+          return (
+            <div key={agent.name} style={{
+              padding: 'var(--space-3) var(--space-4)',
+              borderRadius: 'var(--radius-nav)',
+              border: `1.5px solid ${isSelected ? catColor : agent.active ? 'var(--success)' : 'var(--border-subtle)'}`,
+              background: isSelected ? `${catColor}0d` : agent.active ? 'var(--success-bg)' : 'var(--bg-elevated)',
+              transition: 'all var(--duration-fast)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <ShoppingBag size={14} strokeWidth={1.5} style={{ color: catColor, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>
+                      {agent.name}
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      v{agent.version}
+                    </span>
+                    {agent.active && (
+                      <span style={{ fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-pill)', background: 'var(--success-bg)', color: 'var(--success)' }}>
+                        active
+                      </span>
+                    )}
+                    {!agent.depsOk && (
+                      <span style={{ fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-pill)', background: 'var(--warning-bg)', color: 'var(--warning)' }}>
+                        deps missing
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {agent.description}
+                    {agent.author && <span> -- {agent.author}</span>}
+                  </div>
+                  {agent.tags.length > 0 && (
+                    <div style={{ display: 'flex', gap: 'var(--space-1)', marginTop: 'var(--space-1)' }}>
+                      {agent.tags.slice(0, 5).map((tag) => (
+                        <span key={tag} style={{
+                          fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 'var(--radius-sm)',
+                          background: `${catColor}15`, color: catColor,
+                        }}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSelectedAgent(isSelected ? null : agent.name)}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--brand)',
+                    cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)',
+                  }}
+                >
+                  {isSelected ? '关闭' : '详情'}
+                </button>
+                <button
+                  onClick={() => setConfirmUninstall(agent.name)}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--danger)',
+                    cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-2)',
+                    opacity: 0.6, display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  <Trash2 size={12} strokeWidth={1.5} />
+                </button>
+              </div>
+
+              {/* Expanded detail view */}
+              {isSelected && (
+                <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-page)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>分类: </span>
+                      <span style={{ color: catColor }}>{agent.category}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>作者: </span>
+                      <span style={{ color: 'var(--text-primary)' }}>{agent.author || '-'}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>Profile ID: </span>
+                      <span style={{ color: 'var(--text-primary)' }}>{agent.profileId}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>安装时间: </span>
+                      <span style={{ color: 'var(--text-primary)' }}>{new Date(agent.installedAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  {agent.missingDeps.length > 0 && (
+                    <div style={{ marginTop: 'var(--space-2)', padding: 'var(--space-2)', borderRadius: 'var(--radius-sm)', background: 'var(--warning-bg)', color: 'var(--warning)', fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <AlertTriangle size={12} strokeWidth={1.5} />
+                      缺少依赖插件: {agent.missingDeps.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Install form */}
+      {showInstallForm ? (
+        <div style={{
+          padding: 'var(--space-4)', borderRadius: 'var(--radius-nav)',
+          border: `1.5px dashed var(--brand)50`, background: 'var(--brand-glow)',
+        }}>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
+            从本地路径安装 Agent 包
+          </div>
+          <div style={sharedStyles.field}>
+            <label style={sharedStyles.label}>包路径</label>
+            <input type="text" value={installPath}
+              onChange={(e) => { setInstallPath(e.target.value); setPackageInfo(null); }}
+              placeholder="C:\path\to\agent-package 目录或 manifest.json 文件" style={sharedStyles.input} />
+            <div style={sharedStyles.hint}>
+              指向包含 manifest.json 的目录，或直接指向 manifest.json 文件。
+            </div>
+          </div>
+
+          <div style={{ ...sharedStyles.btnRow, marginTop: 'var(--space-3)' }}>
+            <button onClick={() => handleGetPackageInfo(installPath)} disabled={!installPath.trim() || loadingInfo}
+              style={{
+                ...sharedStyles.btn, background: 'var(--bg-elevated)', color: 'var(--brand)',
+                border: `1px solid var(--brand)`, opacity: installPath.trim() && !loadingInfo ? 1 : 0.4,
+                cursor: installPath.trim() && !loadingInfo ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              }}>
+              <FolderOpen size={14} strokeWidth={1.5} /> {loadingInfo ? '读取中...' : '预览包信息'}
+            </button>
+          </div>
+
+          {/* Package preview */}
+          {packageInfo && (
+            <div style={{
+              marginTop: 'var(--space-3)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-elevated)', border: `1px solid var(--border-subtle)`,
+            }}>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>
+                {packageInfo.name} v{packageInfo.version}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-1)' }}>
+                {packageInfo.description}
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-1)' }}>
+                作者: {packageInfo.author} | 分类: {packageInfo.category}
+              </div>
+              {packageInfo.profile && (
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-1)' }}>
+                  配置: {packageInfo.profile.name} ({packageInfo.profile.role}) - {packageInfo.profile.toolNames.length} 个工具
+                </div>
+              )}
+              {packageInfo.dependencies.length > 0 && (
+                <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
+                  <span style={{ color: 'var(--text-tertiary)' }}>依赖: </span>
+                  {packageInfo.dependencies.map((d) => d.pluginName).join(', ')}
+                </div>
+              )}
+              <button onClick={handleInstallWithInfo} style={{
+                ...sharedStyles.btn, ...sharedStyles.btnSave, marginTop: 'var(--space-3)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              }}>
+                <Package size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 确认安装
+              </button>
+            </div>
+          )}
+
+          <div style={{ ...sharedStyles.btnRow, marginTop: 'var(--space-3)' }}>
+            <button onClick={() => { setShowInstallForm(false); setInstallPath(''); setPackageInfo(null); }}
+              style={{ ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+              <X size={14} strokeWidth={1.5} /> 取消
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShowInstallForm(true)} style={{
+          padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-nav)', border: `1.5px dashed var(--border)`,
+          background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer',
+          fontSize: 'var(--text-xs)', fontWeight: 'var(--font-medium)', textAlign: 'center',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)', width: '100%',
+        }}>
+          <Plus size={14} strokeWidth={1.5} /> 从本地安装 Agent 包
+        </button>
+      )}
+
+      <SaveStatus message={saveMessage} />
+
+      {/* Uninstall confirmation dialog */}
+      {confirmUninstall && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', maxWidth: 360,
+            border: `1px solid var(--border)`,
+          }}>
+            <div style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-3)' }}>
+              卸载 Agent "{confirmUninstall}"?
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: 'var(--space-5)' }}>
+              此操作将从注册表中移除该 agent 及其配置。无法撤销。
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmUninstall(null)} style={{
+                ...sharedStyles.btn, background: 'var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              }}>
+                <X size={14} strokeWidth={1.5} /> 取消
+              </button>
+              <button onClick={() => handleUninstall(confirmUninstall)} style={{
+                ...sharedStyles.btn, background: 'var(--danger)', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 'var(--space-1)',
+              }}>
+                <Trash2 size={14} strokeWidth={1.5} style={{ color: '#fff' }} /> 卸载
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Distributed Runtime Nodes Section
+// ---------------------------------------------------------------------------
+
+function NodesSection() {
+  const [nodes, setNodes] = useState<NodeInfoIPC[]>([]);
+  const [exposedAgents, setExposedAgents] = useState<ExposedAgentIPC[]>([]);
+  const [addLabel, setAddLabel] = useState('');
+  const [addUrl, setAddUrl] = useState('');
+  const [addApiKey, setAddApiKey] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addBusy, setAddBusy] = useState(false);
+  const [exposureEnabled, setExposureEnabled] = useState(false);
+  const [exposurePort, setExposurePort] = useState(3100);
+  const [exposureApiKey, setExposureApiKey] = useState('');
+  const [exposureBusy, setExposureBusy] = useState(false);
+
+  const loadNodes = useCallback(async () => {
+    try {
+      const result = await window.settingsAPI.nodeList();
+      setNodes(result.nodes);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const loadExposed = useCallback(async () => {
+    try {
+      const result = await window.settingsAPI.nodeListExposed();
+      setExposedAgents(result.exposedAgents);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    loadNodes();
+    loadExposed();
+  }, [loadNodes, loadExposed]);
+
+  const handleAddNode = async () => {
+    if (!addUrl.trim() || !addLabel.trim()) return;
+    setAddBusy(true);
+    setAddError(null);
+    try {
+      const result = await window.settingsAPI.nodeAdd(addLabel.trim(), addUrl.trim(), addApiKey.trim());
+      if (result.success) {
+        setAddLabel('');
+        setAddUrl('');
+        setAddApiKey('');
+        await loadNodes();
+      } else {
+        setAddError(result.error ?? 'Failed to add node');
+      }
+    } catch (err: unknown) {
+      setAddError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
+  const handleRemoveNode = async (nodeId: string) => {
+    try {
+      await window.settingsAPI.nodeRemove(nodeId);
+      await loadNodes();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRefreshStatus = async () => {
+    try {
+      const result = await window.settingsAPI.nodeStatus();
+      setNodes(result.nodes);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDiscover = async (nodeId: string) => {
+    try {
+      const result = await window.settingsAPI.nodeDiscover(nodeId);
+      if (result.success) {
+        await loadNodes();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleToggleExpose = async (petId: string, exposed: boolean) => {
+    try {
+      await window.settingsAPI.nodeToggleExpose(petId, exposed);
+      await loadExposed();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleUpdateExposure = async () => {
+    setExposureBusy(true);
+    try {
+      await window.settingsAPI.nodeUpdateExposure({
+        enabled: exposureEnabled,
+        port: exposurePort,
+        apiKey: exposureApiKey || undefined,
+      });
+    } catch {
+      // ignore
+    } finally {
+      setExposureBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-6)' }}>
+        Distributed Nodes
+      </h2>
+
+      {/* Node Exposure Config */}
+      <div style={{ marginBottom: 'var(--space-8)', padding: 'var(--space-4)', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
+        <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)' }}>
+          Node Exposure (Allow remote access to this instance)
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={exposureEnabled}
+              onChange={(e) => setExposureEnabled(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>Enable node exposure</span>
+          </label>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
+            <div style={{ flex: '0 0 120px' }}>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)', display: 'block' }}>Port</span>
+              <input
+                type="number"
+                value={exposurePort}
+                onChange={(e) => setExposurePort(parseInt(e.target.value, 10) || 3100)}
+                style={{ ...sharedStyles.input, width: '100%' }}
+                placeholder="3100"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: 'var(--space-1)', display: 'block' }}>API Key</span>
+              <input
+                type="password"
+                value={exposureApiKey}
+                onChange={(e) => setExposureApiKey(e.target.value)}
+                style={{ ...sharedStyles.input, width: '100%' }}
+                placeholder="Optional API key for auth"
+              />
+            </div>
+            <button
+              onClick={handleUpdateExposure}
+              disabled={exposureBusy}
+              style={{
+                padding: 'var(--space-2) var(--space-4)',
+                background: 'var(--color-brand)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                cursor: exposureBusy ? 'not-allowed' : 'pointer',
+                fontSize: 'var(--text-sm)',
+                whiteSpace: 'nowrap',
+                opacity: exposureBusy ? 0.6 : 1,
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Exposed Agents */}
+      {exposedAgents.length > 0 && (
+        <div style={{ marginBottom: 'var(--space-8)', padding: 'var(--space-4)', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
+          <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)' }}>
+            Exposed Local Agents
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {exposedAgents.map((agent) => (
+              <div key={agent.petId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-2) var(--space-3)', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)' }}>
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>{agent.petId}</span>
+                <button
+                  onClick={() => handleToggleExpose(agent.petId, !agent.exposed)}
+                  style={{
+                    padding: 'var(--space-1) var(--space-3)',
+                    fontSize: 'var(--text-xs)',
+                    border: 'none',
+                    borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                    background: agent.exposed ? 'var(--color-success)' : 'var(--bg-card)',
+                    color: agent.exposed ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  {agent.exposed ? 'Exposed' : 'Hidden'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add Node Form */}
+      <div style={{ marginBottom: 'var(--space-8)', padding: 'var(--space-4)', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
+        <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)', marginBottom: 'var(--space-4)' }}>
+          Add Remote Node
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <input
+            type="text"
+            value={addLabel}
+            onChange={(e) => setAddLabel(e.target.value)}
+            style={sharedStyles.input}
+            placeholder="Node label (e.g. 'Office Laptop')"
+          />
+          <input
+            type="text"
+            value={addUrl}
+            onChange={(e) => setAddUrl(e.target.value)}
+            style={sharedStyles.input}
+            placeholder="URL (e.g. http://192.168.1.50:3100)"
+          />
+          <input
+            type="password"
+            value={addApiKey}
+            onChange={(e) => setAddApiKey(e.target.value)}
+            style={sharedStyles.input}
+            placeholder="API Key (if required by remote node)"
+          />
+          {addError && (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger)' }}>{addError}</div>
+          )}
+          <button
+            onClick={handleAddNode}
+            disabled={addBusy || !addUrl.trim() || !addLabel.trim()}
+            style={{
+              padding: 'var(--space-2) var(--space-4)',
+              background: 'var(--color-brand)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              cursor: addBusy ? 'not-allowed' : 'pointer',
+              fontSize: 'var(--text-sm)',
+              opacity: addBusy || !addUrl.trim() || !addLabel.trim() ? 0.6 : 1,
+            }}
+          >
+            {addBusy ? 'Adding...' : 'Add Node'}
+          </button>
+        </div>
+      </div>
+
+      {/* Registered Nodes List */}
+      <div style={{ marginBottom: 'var(--space-8)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+          <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>
+            Registered Nodes
+          </h3>
+          <button
+            onClick={handleRefreshStatus}
+            style={{
+              padding: 'var(--space-1) var(--space-3)',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer',
+              fontSize: 'var(--text-xs)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-1)',
+            }}
+          >
+            <RefreshCw size={12} strokeWidth={1.5} />
+            Refresh
+          </button>
+        </div>
+
+        {nodes.length === 0 ? (
+          <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+            No remote nodes registered. Add a node above to get started.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            {nodes.map((node) => (
+              <div
+                key={node.id}
+                style={{
+                  padding: 'var(--space-4)',
+                  background: 'var(--bg-card)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                    <div style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: node.status === 'online' ? 'var(--color-success)' : node.status === 'checking' ? 'var(--color-warning)' : 'var(--text-tertiary)',
+                    }} />
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--font-semibold)', color: 'var(--text-primary)' }}>
+                      {node.label}
+                    </span>
+                    {node.latencyMs !== null && (
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                        {node.latencyMs}ms
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    <button
+                      onClick={() => handleDiscover(node.id)}
+                      style={{
+                        padding: 'var(--space-1) var(--space-2)',
+                        background: 'transparent',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer',
+                        fontSize: 'var(--text-xs)',
+                      }}
+                    >
+                      Discover
+                    </button>
+                    <button
+                      onClick={() => handleRemoveNode(node.id)}
+                      style={{
+                        padding: 'var(--space-1) var(--space-2)',
+                        background: 'transparent',
+                        color: 'var(--color-danger)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Trash2 size={12} strokeWidth={1.5} />
+                    </button>
+                  </div>
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: 'var(--space-2)' }}>
+                  {node.url}
+                </div>
+                {node.agents.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 'var(--space-2)' }}>
+                    {node.agents.map((agent) => (
+                      <span
+                        key={agent.id}
+                        style={{
+                          padding: 'var(--space-1) var(--space-3)',
+                          background: 'var(--bg-elevated)',
+                          borderRadius: 'var(--radius-pill)',
+                          fontSize: 'var(--text-xs)',
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        {agent.name} ({agent.role})
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main settings window with sidebar navigation
 // ---------------------------------------------------------------------------
 
@@ -1973,8 +3100,11 @@ export const SettingsWindow: React.FC = () => {
     { key: 'permissions', label: '权限', icon: <Shield size={16} strokeWidth={1.5} /> },
     { key: 'pets', label: '宠物', icon: <Bot size={16} strokeWidth={1.5} /> },
     { key: 'plugins', label: '插件', icon: <Plug size={16} strokeWidth={1.5} /> },
+    { key: 'workspaces', label: '工作区', icon: <Layers size={16} strokeWidth={1.5} /> },
     { key: 'workflows', label: '工作流', icon: <GitBranch size={16} strokeWidth={1.5} /> },
     { key: 'traces', label: 'Traces', icon: <Activity size={16} strokeWidth={1.5} /> },
+    { key: 'marketplace', label: 'Marketplace', icon: <ShoppingBag size={16} strokeWidth={1.5} /> },
+    { key: 'nodes', label: 'Nodes', icon: <Server size={16} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -2035,8 +3165,11 @@ export const SettingsWindow: React.FC = () => {
           {section === 'permissions' && <PermissionsSection />}
           {section === 'pets' && <ProfilesSection />}
           {section === 'plugins' && <PluginsSection />}
+          {section === 'workspaces' && <WorkspacesSection />}
           {section === 'workflows' && <WorkflowsSection />}
           {section === 'traces' && <TracesTab />}
+          {section === 'marketplace' && <MarketplaceSection />}
+          {section === 'nodes' && <NodesSection />}
         </div>
       </div>
 

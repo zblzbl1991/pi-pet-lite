@@ -1,13 +1,36 @@
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
-import { AppConfig, LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile } from '../shared/types';
+import { AppConfig, LLMConfig, NotificationConfig, BrowserConfig, RiskLevel, ThinkingLevel, PetProfile, NodesPersistConfig } from '../shared/types';
 import { CONFIG_FILENAME } from '../shared/constants';
 
 /**
  * Simple JSON config file reader/writer for application settings.
  * Config file is stored in the user data directory.
+ * Supports workspace-scoped paths via setConfigBasePath().
  */
+
+/** Active config base path override (set when switching workspaces) */
+let configBasePathOverride: string | null = null;
+
+/**
+ * Set a custom base path for config file operations.
+ * Used by the workspace system to scope config to a specific workspace directory.
+ */
+export function setConfigBasePath(basePath: string): void {
+  configBasePathOverride = basePath;
+}
+
+/**
+ * Get the current config base path.
+ * Returns the workspace override if set, otherwise the default userData path.
+ */
+export function getConfigBasePath(): string {
+  if (configBasePathOverride) {
+    return configBasePathOverride;
+  }
+  return getUserDataPath();
+}
 
 function getUserDataPath(): string {
   // app.getPath('userData') is only available in the main process.
@@ -23,7 +46,7 @@ function getUserDataPath(): string {
 }
 
 function getConfigPath(): string {
-  return path.join(getUserDataPath(), CONFIG_FILENAME);
+  return path.join(getConfigBasePath(), CONFIG_FILENAME);
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -44,6 +67,15 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   riskLevel: 'medium' as RiskLevel,
   profiles: [],
+  nodes: {
+    nodes: [],
+    exposure: {
+      enabled: false,
+      port: 3100,
+      apiKey: '',
+      exposedAgents: [],
+    },
+  },
 };
 
 /**
@@ -73,6 +105,7 @@ export function readConfig(): AppConfig {
       },
       riskLevel: parsed.riskLevel ?? DEFAULT_CONFIG.riskLevel,
       profiles: parsed.profiles ?? DEFAULT_CONFIG.profiles,
+      nodes: parsed.nodes ?? DEFAULT_CONFIG.nodes,
     };
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -165,6 +198,16 @@ export function updateProfilesConfig(profiles: PetProfile[]): AppConfig {
 export function resetProfilesConfig(): AppConfig {
   const current = readConfig();
   const updated: AppConfig = { ...current, profiles: [] };
+  writeConfig(updated);
+  return updated;
+}
+
+/**
+ * Update only the nodes section.
+ */
+export function updateNodesConfig(nodes: NodesPersistConfig): AppConfig {
+  const current = readConfig();
+  const updated: AppConfig = { ...current, nodes };
   writeConfig(updated);
   return updated;
 }
