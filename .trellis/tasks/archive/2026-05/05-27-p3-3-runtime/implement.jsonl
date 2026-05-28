@@ -1,0 +1,12 @@
+{"file": ".trellis/tasks/05-27-p3-3-runtime/prd.md", "reason": "PRD with all requirements: runtime node (R1), cross-node delegation (R2), load balancing (R3), security (R4), service discovery (R5)"}
+{"file": ".trellis/tasks/archive/2026-05/05-20-a2a-remote-agent-integration/prd.md", "reason": "A2A remote agent PRD — this task extends A2A protocol to full distributed runtime; must understand existing RemoteAgentRuntime and AgentCard design"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend architecture: AgentBackend abstraction layer, TaskScheduler delegation, AgentChannel messaging — all are integration points for distributed runtime node"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Directory layout for placing new runtime node server, service discovery module, load balancer, and security modules under src/agent/"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling patterns for network failures, node unreachable, health check timeouts, TLS handshake errors, and mDNS discovery failures"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality standards for new distributed runtime modules: TypeBox schemas, const-object enums, err:unknown pattern, build verification"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Logging patterns for node discovery events, health check results, load balancing decisions, and failover warnings"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Storage patterns for persisting remote node URLs, TLS certificates, API keys, and node configuration"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns for Settings UI node status panel: online/offline indicators, latency display, load meters, add/edit node forms"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "State management for node discovery results, health status updates, and load info flowing via IPC to renderer"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety for new shared types: RuntimeNode, NodeHealth, LoadBalancerConfig, DiscoveryEvent, TLSConfig — all go in src/shared/types.ts"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data flow for distributed runtime: agent process (node server) <-> main process (IPC relay) <-> renderer (status panel)"}

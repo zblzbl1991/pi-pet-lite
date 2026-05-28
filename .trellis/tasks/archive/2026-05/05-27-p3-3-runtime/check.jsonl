@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/05-27-p3-3-runtime/prd.md", "reason": "Verify all 5 requirements implemented: runtime node exposure, cross-node delegation with A2A, load balancing with failover, TLS/auth security, mDNS + manual discovery with status panel"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Code quality: no hardcoded values, TypeBox schemas for all tool params, const-object enums, proper TypeScript strict mode"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error handling for node unreachable, health check timeout, TLS failure, mDNS unavailable, load balancer no-available-nodes"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality: CSS variable tokens for node status panel, glass effects, dark theme, IPC via preload bridge only"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component quality: functional components, named exports, form validation for manual node URL input, loading/error states for discovery"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety: RuntimeNode and related types in src/shared/types.ts, discriminated unions for node status, no any types"}
