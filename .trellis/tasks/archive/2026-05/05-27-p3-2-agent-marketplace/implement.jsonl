@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend architecture: Plugin System (loader, adapters, lifecycle) and AgentBackend abstraction that the marketplace builds on"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "File placement for new marketplace/ directory alongside plugins/ and workflow/"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "TypeScript quality standards, const-object enums, TypeBox schemas, build verification"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling for package download, install failures, and registry communication"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Storage patterns for installed agent packages, ratings cache, and update tracking"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Frontend component patterns, design tokens, styling conventions for marketplace UI pages"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Frontend file placement for new marketplace settings page"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "IPC-driven state patterns for marketplace data (listings, search results, install status)"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type organization for marketplace types (AgentPackage, MarketplaceListing, Review)"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Marketplace spans multiple layers: registry API, download, plugin install, UI state, IPC bridge"}
+{"file": ".trellis/tasks/05-27-p3-2-agent-marketplace/prd.md", "reason": "Requirements: agent package format (R1), browse/search (R2), install/update (R3), publish (R4), ratings (R5)"}

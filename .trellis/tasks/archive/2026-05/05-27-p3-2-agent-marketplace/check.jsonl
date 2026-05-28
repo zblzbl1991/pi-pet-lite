@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify marketplace module integrates correctly with Plugin System and AgentBackend architecture"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Check quality standards: no any, const objects, TypeBox schemas, build passes"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error handling for download failures, invalid packages, registry errors"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify storage follows config-store patterns for installed packages and cache"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Check frontend compliance: tokens, named exports, inline styles, no hardcoded values"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify frontend quality: no any, var() tokens, useEffect cleanup, IPC via preload"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify new types in shared/types.ts, const-object enums, no enum keyword"}
+{"file": ".trellis/tasks/05-27-p3-2-agent-marketplace/prd.md", "reason": "Check all R1-R5 requirements are implemented"}
