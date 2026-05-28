@@ -549,3 +549,39 @@ Integrate A2A remote agent support with pet team management; add hot-reload Chie
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: P3 全部实现：Workspace + Marketplace + Runtime
+
+**Date**: 2026-05-28
+**Task**: P3 全部实现：Workspace + Marketplace + Runtime
+**Branch**: `master`
+
+### Summary
+
+并行实现三个 P3 任务：P3.1 Multi Workspace（workspace-manager、per-workspace DB/Config 隔离、托盘切换、Settings tab）、P3.2 Agent Marketplace（包格式、本地注册表、安装器、Settings tab）、P3.3 分布式 Runtime（HTTP 节点暴露、跨节点委派、负载均衡、节点状态 UI）。总改动 ~4900 行。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `51b1e30` | (see git log) |
+| `3cb45c9` | (see git log) |
+| `51e5e0b` | (see git log) |
+| `3de12a7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

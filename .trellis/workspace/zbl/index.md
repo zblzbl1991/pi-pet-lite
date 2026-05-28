@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
-- **Last Active**: 2026-05-27
+- **Total Sessions**: 16
+- **Last Active**: 2026-05-28
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~551 | Active |
+| `journal-1.md` | ~587 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-05-28 | P3 全部实现：Workspace + Marketplace + Runtime | `51b1e30`, `3cb45c9`, `51e5e0b`, `3de12a7` | `master` |
 | 15 | 2026-05-27 | P3.4 Trace 可视化调试 UI | `efbdc48` | `master` |
 | 14 | 2026-05-25 | P1 + P2 全部 6 任务: Agent Runtime 演进路线 P1-P2 交付 | `320873d`, `d148ecb`, `9257810`, `aee31ea`, `fef16b0`, `ab4738b`, `c7dcb21`, `ef7a963`, `f5cb5a5`, `b1a0910`, `6ab7a35`, `fe93257` | `master` |
 | 13 | 2026-05-25 | P1 + P2.1-P2.2: Agent Runtime 全部 P1 + Plugin + Session | `320873d`, `d148ecb`, `9257810`, `aee31ea`, `fef16b0`, `ab4738b`, `c7dcb21`, `ef7a963`, `f5cb5a5`, `b1a0910` | `master` |
