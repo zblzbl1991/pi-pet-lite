@@ -14,3 +14,4 @@ yarn-error.log*
 .vscode/*
 .idea/
 /.claude/
+/src/renderer/dist/
