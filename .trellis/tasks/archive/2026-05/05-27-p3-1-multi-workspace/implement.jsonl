@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "PetManager, SessionStore, BlackboardStore, Plugin system architecture — all need per-workspace instantiation and isolation"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Placement of new workspace-manager module and storage directory layout per workspace"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Storage patterns for per-workspace data directories (sessions.db, blackboard.db, config.json)"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling for workspace CRUD, switch, export/import, and isolation failures"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Workspace management UI in Settings window (list, create, rename, delete, switch)"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Workspace switching state flow across main process and renderer via IPC"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Workspace data flows across main/agent/renderer layers; workspace switch tears down and re-creates agent instances"}
+{"file": ".trellis/tasks/05-27-p3-1-multi-workspace/prd.md", "reason": "Requirements: workspace CRUD, isolation, quick switch, export/import, session copy"}

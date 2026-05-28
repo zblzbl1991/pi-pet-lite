@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "TypeScript quality standards for workspace manager, data isolation correctness"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify workspace operations use proper error patterns (unknown catch, IPC result objects)"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend code quality for workspace management UI components"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Workspace type definitions and IPC contract type safety"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify per-workspace database isolation and correct userData directory handling"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Validate workspace switch data flow correctness across all layer boundaries"}
